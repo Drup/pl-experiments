@@ -1,0 +1,13 @@
+(ocamllex lexer)
+(menhir (modules parser))
+
+(executable
+  (name hm)
+  (libraries zoo)
+)
+
+(alias
+ (name   runtest)
+ (action (ignore-stdout (run ./hm.exe %{deps})))
+ (deps (glob_files "*.hm"))
+)
