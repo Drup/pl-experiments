@@ -1,0 +1,2 @@
+let f = fun x -> fun y -> x
+let z = fun x -> f x x

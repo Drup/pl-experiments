@@ -1,0 +1,13 @@
+(ocamllex lexer)
+(menhir (modules parser))
+
+(executable
+  (name lin)
+  (libraries zoo)
+)
+
+(alias
+ (name   runtest)
+ (action (ignore-stdout (run ./lin.exe %{deps})))
+ (deps (glob_files "*.lin"))
+)

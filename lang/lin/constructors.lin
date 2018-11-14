@@ -1,0 +1,3 @@
+type ('a : 'k) t = Foo of ('a -{'k}> 'a)
+let f = Foo (fun x -> x)
+let y = let Foo x = f in x 3
