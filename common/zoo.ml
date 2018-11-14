@@ -93,9 +93,6 @@ struct
   (** Should the interactive shell be run? *)
   let interactive_shell = ref true
 
-  (** The command-line wrappers that we look for. *)
-  let wrapper = ref (Some ["rlwrap"; "ledit"])
-
   (** The usage message. *)
   let usage =
     match L.file_parser with
@@ -111,12 +108,6 @@ struct
 
   (** Command-line options *)
   let options = Arg.align ([
-    ("--wrapper",
-     Arg.String (fun str -> wrapper := Some [str]),
-     "<program> Specify a command-line wrapper to be used (such as rlwrap or ledit)");
-    ("--no-wrapper",
-     Arg.Unit (fun () -> wrapper := None),
-     " Do not use a command-line wrapper");
     ("-v",
      Arg.Unit (fun () ->
        print_endline (L.name ^ " " ^ "(" ^ Sys.os_type ^ ")");
@@ -157,14 +148,22 @@ struct
   let read_toplevel parser () =
     let prompt = L.name ^ "> "
     and prompt_more = String.make (String.length L.name) ' ' ^ "> " in
-    print_string prompt ;
-    let str = ref (read_line ()) in
-      while L.read_more !str do
-        print_string prompt_more ;
-        str := !str ^ (read_line ()) ^ "\n"
-      done ;
-      parser (Lexing.from_string (!str ^ "\n"))
-
+    match LNoise.linenoise prompt with
+    | None -> exit 0
+    | Some s0 ->
+      LNoise.history_add s0 |> ignore ;
+      let rec aux acc =
+        if L.read_more acc then match LNoise.linenoise prompt_more with
+          | None -> exit 0
+          | Some s ->
+            LNoise.history_add s |> ignore ;
+            aux (acc ^ s)
+        else begin
+          parser @@ Lexing.from_string (acc ^ "\n")
+        end
+      in
+      aux s0
+          
   (** Parser wrapper that catches syntax-related errors and converts them to errors. *)
   let wrap_syntax_errors parser lex =
     try[@warning "-52"]
@@ -203,7 +202,7 @@ struct
           while true do
             try
               let cmd = read_toplevel (wrap_syntax_errors toplevel_parser) () in
-                ctx := L.exec !ctx cmd
+              ctx := L.exec !ctx cmd
             with
               | Error err -> print_error err
               | Sys.Break -> prerr_endline "Interrupted."
@@ -212,27 +211,11 @@ struct
 
   (** Main program *)
   let main () =
+    LNoise.set_multiline true;
     (* Intercept Ctrl-C by the user *)
-    Sys.catch_break true;
+    LNoise.catch_break true;
     (* Parse the arguments. *)
     Arg.parse options anonymous usage;
-    (* Attempt to wrap yourself with a line-editing wrapper. *)
-    if !interactive_shell then
-      begin match !wrapper with
-        | None -> ()
-        | Some lst ->
-          let n = Array.length Sys.argv + 2 in
-          let args = Array.make n "" in
-            Array.blit Sys.argv 0 args 1 (n - 2);
-            args.(n - 1) <- "--no-wrapper";
-            List.iter
-              (fun wrapper ->
-                try
-                  args.(0) <- wrapper;
-                  Unix.execvp wrapper args
-                with Unix.Unix_error _ -> ())
-              lst
-      end;
     (* Files were listed in the wrong order, so we reverse them *)
     files := List.rev !files;
     (* Set the maximum depth of pretty-printing, after which it prints ellipsis. *)

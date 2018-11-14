@@ -1,4 +1,4 @@
 (library
  (name zoo)
- (libraries unix fmt containers)
+ (libraries unix linenoise fmt containers)
 )
