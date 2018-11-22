@@ -62,7 +62,115 @@ module Normal = struct
     filter_useless
 
 end
+
+module type LAT = sig
+  type t
+  val relation : (t * t) list
+  val (<) : t -> t -> bool
+  val (=) : t -> t -> bool
+  val max : t
+  val min : t
+  val least_upper_bound : t list -> t
+  val greatest_lower_bound : t list -> t
+end
+
+module type KINDS = sig
+  type t
+  val equal : t -> t -> bool
+  val hash : t -> int
+  val compare : t -> t -> int
   
+  type constant
+  val constant : constant -> t
+
+  val classify : t -> [> `Var | `Constant of constant ]
+  val unify : t list -> t
+end
+
+module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
+
+  module G = Graph.Persistent.Digraph.Concrete(K)
+  module Check = Graph.Path.Check(G)
+  module Scc = Graph.Components.Make(G)
+  module O = Graph.Oper.P(G)
+  module S = Set.Make(G.V)
+
+  let add_lattice_inequalities g0 =
+    List.fold_left
+      (fun g (k1, k2) -> G.add_edge g (K.constant k1) (K.constant k2))
+      g0 Lat.relation
+
+  (* O(|V|*|C|) *)
+  let lattice_closure g0 =
+    let c = Check.create g0 in
+    let constants, vars =
+      let f k (cl,vl) = match K.classify k with
+        | `Var -> (cl, k :: vl)
+        | `Constant c -> ((k, c) :: cl, vl)
+      in G.fold_vertex f g0 ([],[])
+    in
+    let add_bounds g var =
+      let lesser, greater =
+        let f (l,g) (vertex, constant) =
+          if Check.check_path c var vertex then (l, constant::g)
+          else if Check.check_path c vertex var then (constant::l, g)
+          else (l, g)
+        in
+        List.fold_left f ([],[]) constants
+      in
+      let g = G.add_edge g (K.constant @@ Lat.greatest_lower_bound lesser) var in
+      let g = G.add_edge g var (K.constant @@ Lat.least_upper_bound greater) in
+      g
+    in
+    List.fold_left add_bounds g0 vars
+
+  (* O(|V+C|*unification + |E|) *)
+  let unify_clusters g0 =
+    let n, cluster = Scc.scc g0 in
+    let unified_vars =
+      let a = Array.make n [] in
+      let register_vertice v = a.(cluster v) <- v :: a.(cluster v) in
+      G.iter_vertex register_vertice g0 ;
+      Array.map K.unify a
+    in
+    let g_minified =
+      let add_minified_edge v1 v2 g =
+        G.add_edge g (unified_vars.(cluster v1)) unified_vars.(cluster v2)
+      in
+      G.fold_edges add_minified_edge g0 G.empty
+    in
+    g_minified
+    
+  let cleanup_vertices must_keep_vars g0 =
+    let g0 = O.transitive_closure g0 in
+    let cleanup_vertex v g =
+      match K.classify v with
+      | `Var when not (S.mem v must_keep_vars) -> G.remove_vertex g v
+      | `Constant c when Lat.(c = min) || Lat.(c = max) -> G.remove_vertex g v
+      | `Var | `Constant _ -> g
+    in
+    let g_cleaned = G.fold_vertex cleanup_vertex g0 g0 in
+    O.transitive_reduction ~reflexive:true g_cleaned
+
+  let from_normal l =
+    List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
+  
+  let to_normal g =
+    G.fold_edges (fun k1 k2 l -> (k1, k2) :: l) g []
+
+  let solve ~keep_vars l =
+    from_normal l
+    |> add_lattice_inequalities
+    |> lattice_closure
+    |> unify_clusters
+    |> cleanup_vertices keep_vars
+    |> to_normal
+end
+
+let rec shorten = function
+  | Types.KVar {contents = KLink k} -> shorten k
+  | Un | Lin | Types.KGenericVar _
+  | Types.KVar {contents = KUnbound _} as k -> k
 
 let denormal : Normal.t -> T.constr = fun l ->
   T.And (List.map (fun (k1, k2) -> T.KindLeq (k1, k2)) l)
