@@ -140,7 +140,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       G.fold_edges add_minified_edge g0 G.empty
     in
     g_minified
-    
+
   let cleanup_vertices must_keep_vars g0 =
     let g0 = O.transitive_closure g0 in
     let cleanup_vertex v g =
@@ -154,7 +154,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
 
   let from_normal l =
     List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
-  
+
   let to_normal g =
     G.fold_edges (fun k1 k2 l -> (k1, k2) :: l) g []
 
