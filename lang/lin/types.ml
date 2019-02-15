@@ -1,8 +1,29 @@
 type level = int
 
+module Region = struct
+  type t = Global | Region of int | Never
+  let compare r1 r2 = match r1, r2 with
+    | Region r1, Region r2 -> CCInt.compare r1 r2
+    | Global, Global | Never, Never -> 0
+    | Global, _ | _, Never -> -1
+    | _, Global | Never, _ -> 1
+  let equal r1 r2 = compare r1 r2 = 0
+  let biggest = Never
+  let smallest = Global
+  let max l1 l2 = match l1, l2 with
+    | Region r1, Region r2 -> Region (CCInt.max r1 r2)
+    | Never, _ | _, Never -> Never
+    | Global, l | l, Global -> l
+  let min l1 l2 = match l1, l2 with
+    | Region r1, Region r2 -> Region (CCInt.min r1 r2)
+    | Never, l | l, Never -> l
+    | Global, _ | _, Global -> Global
+end
+
+type region = Region.t
 and kind =
-  | Un
-  | Lin
+  | Un : region -> kind
+  | Aff : region -> kind
   | KGenericVar : Name.t -> kind
   | KVar : kuvar ref -> kind
 

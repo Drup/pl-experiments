@@ -32,5 +32,5 @@ rule token = parse
   | ":" { DOUBLECOLON }
   | "," { COMMA }
   | "un" { UN }
-  | "lin" { LIN }
+  | "aff" { AFF }
   | ";;"	{ SEMISEMI }

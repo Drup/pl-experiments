@@ -1,6 +1,8 @@
 open Types
 
-let (@->) x y = Arrow (x,Un,y)
+let un = Un Global
+
+let (@->) x y = Arrow (x,un,y)
 let new_y () =
   let y_name = Name.create ~name:"a" () in
   let n = GenericVar y_name in
@@ -14,8 +16,8 @@ let ref x = App (ref_name, [x])
 
 let initial_env =
   Env.empty
-  |> Env.add_constr ref_name (kscheme ~args:[Un] Un)
-  |> Env.add_constr int_name (kscheme Un)
+  |> Env.add_constr ref_name (kscheme ~args:[un] un)
+  |> Env.add_constr int_name (kscheme un)
 
 let initial_rename_env = Syntax.Rename.{
     env = SMap.empty ;

@@ -65,13 +65,13 @@ end
 
 module type LAT = sig
   type t
-  val relation : (t * t) list
   val (<) : t -> t -> bool
   val (=) : t -> t -> bool
-  val max : t
-  val min : t
+  val biggest : t
+  val smallest : t
   val least_upper_bound : t list -> t
   val greatest_lower_bound : t list -> t
+  val relations : t list -> (t * t) list
 end
 
 module type KINDS = sig
@@ -96,9 +96,15 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   module S = Set.Make(G.V)
 
   let add_lattice_inequalities g0 =
+    let constants = 
+      G.fold_vertex List.cons g0 []
+      |> CCList.filter_map
+        (fun x -> match K.classify x with `Var -> None | `Constant c -> Some c)
+    in
+    let relations = Lat.relations constants in
     List.fold_left
       (fun g (k1, k2) -> G.add_edge g (K.constant k1) (K.constant k2))
-      g0 Lat.relation
+      g0 relations
 
   (* O(|V|*|C|) *)
   let lattice_closure g0 =
@@ -126,50 +132,76 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
 
   (* O(|V+C|*unification + |E|) *)
   let unify_clusters g0 =
-    let n, cluster = Scc.scc g0 in
-    let unified_vars =
-      let a = Array.make n [] in
-      let register_vertice v = a.(cluster v) <- v :: a.(cluster v) in
-      G.iter_vertex register_vertice g0 ;
-      Array.map K.unify a
-    in
+    (* We use [Types.kind] as vertices, [K.unify] will mutate them,
+       thus making the internal sets of the graph invalid. 
+       To avoid issues, we extract the edges as a list and walk through it 
+       afterwards. It would be better to use a representation of kinds
+       that is immutable. *)
+    let edges = G.fold_edges (fun v1 v2 l -> (v1,v2) ::l) g0 [] in
+    let clusters = Scc.scc_array g0 in
+    let _vertices = Array.map K.unify clusters in
     let g_minified =
-      let add_minified_edge v1 v2 g =
-        G.add_edge g (unified_vars.(cluster v1)) unified_vars.(cluster v2)
+      let add_minified_edge g (v1, v2) =
+        G.add_edge g v1 v2
       in
-      G.fold_edges add_minified_edge g0 G.empty
+      List.fold_left add_minified_edge G.empty edges
     in
+
+    (* let n, cluster = Scc.scc g0 in *)
+    (* let unified_vars =
+     *   let a = Array.make n [] in
+     *   let register_vertice v = a.(cluster v) <- v :: a.(cluster v) in
+     *   G.iter_vertex register_vertice g0 ;
+     *   Array.map K.unify a (\* g0 is invalid after this operation *\)
+     * in
+     * let g_minified =
+     *   let add_minified_edge g (v1, v2) =
+     *     G.add_edge g (unified_vars.(cluster v1)) unified_vars.(cluster v2)
+     *   in
+     *   List.fold_left add_minified_edge G.empty edges
+     * in *)
     g_minified
 
   let cleanup_vertices must_keep_vars g0 =
     let g0 = O.transitive_closure g0 in
+    let can_remove =
+      match must_keep_vars with
+      | Some vars -> fun k -> not (S.mem k vars)
+      | None -> fun _ -> false
+    in
     let cleanup_vertex v g =
       match K.classify v with
-      | `Var when not (S.mem v must_keep_vars) -> G.remove_vertex g v
-      | `Constant c when Lat.(c = min) || Lat.(c = max) -> G.remove_vertex g v
+      | `Var when can_remove v -> G.remove_vertex g v
+      | `Constant c when Lat.(c = smallest) || Lat.(c = biggest) ->
+        G.remove_vertex g v
       | `Var | `Constant _ -> g
     in
     let g_cleaned = G.fold_vertex cleanup_vertex g0 g0 in
     O.transitive_reduction ~reflexive:true g_cleaned
-
+  
   let from_normal l =
     List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
 
   let to_normal g =
     G.fold_edges (fun k1 k2 l -> (k1, k2) :: l) g []
 
-  let solve ~keep_vars l =
+  let solve ?keep_vars l =
     from_normal l
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
     |> cleanup_vertices keep_vars
     |> to_normal
+
+  let simplify ~keep_vars l =
+    from_normal l
+    |> cleanup_vertices (Some keep_vars)
+    |> to_normal
 end
 
 let rec shorten = function
   | Types.KVar {contents = KLink k} -> shorten k
-  | Un | Lin | Types.KGenericVar _
+  | Types.Un _ | Types.Aff _ | Types.KGenericVar _
   | Types.KVar {contents = KUnbound _} as k -> k
 
 let denormal : Normal.t -> T.constr = fun l ->

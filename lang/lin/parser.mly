@@ -8,7 +8,7 @@ open Syntax
 %token <string> TYIDENT
 %token <string> UIDENT
 %token <int> INT
-%token UN LIN
+%token UN AFF
 %token EQUAL PLUS
 %token LPAREN RPAREN
 %token LET IN
@@ -105,7 +105,7 @@ simple_type_expr_no_paren:
 kind_expr:
   | n=kind_var { Ty.KVar n }
   | UN { Ty.Un }
-  | LIN { Ty.Lin }
+  | AFF { Ty.Aff }
 
 constraints: l=separated_nonempty_list (COMMA, constr) { l }
 constr:

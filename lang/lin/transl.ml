@@ -2,8 +2,8 @@ module STy = Syntax.Ty
 
 let transl_kind = function
   | STy.KVar n -> Types.KGenericVar n
-  | Un -> Un
-  | Lin -> Lin
+  | Un -> Un Global
+  | Aff -> Aff Global
 
 let transl_constr l =
   List.map (fun (k1, k2) -> (transl_kind k1, transl_kind k2)) l
@@ -26,7 +26,7 @@ let (+++) = Name.Set.union
 let free_vars_kind = function
   | Types.KGenericVar n -> Name.Set.singleton n
   | Types.KVar _ -> assert false
-  | Types.Un | Types.Lin -> Name.Set.empty
+  | Types.Un _ | Types.Aff _ -> Name.Set.empty
 
 let free_vars_kinds l =
   List.fold_left
@@ -74,7 +74,7 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
   in
   let tyschm =
     let ty : Types.typ =
-      Arrow (constr_typ, Un,
+      Arrow (constr_typ, Un Global,
              App (name, List.map (fun (x, _) -> Types.GenericVar x) tyargs))
     in
     let tyvars, kvars = free_vars ty in

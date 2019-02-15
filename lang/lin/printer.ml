@@ -29,6 +29,8 @@ let tyname ?(unbound=false) fmt n =
   Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
 let kname ?(unbound=false) fmt n =
   Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
+(* let rname ?(unbound=false) fmt n =
+ *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
 
 let rec value
   = fun fmt -> function
@@ -78,14 +80,28 @@ let rec typ_need_paren = function
   | T.Var { contents = Link t } -> typ_need_paren t
   | _ -> false
 
+(* let rec rvar
+ *   = fun fmt -> function
+ *   | T.RUnbound (n,_) -> kname ~unbound:true fmt n
+ *   | T.RLink t -> region fmt t
+ * 
+ * and region fmt = function
+ *   | T.RVar { contents = x } -> rvar fmt x
+ *   | T.RGenericVar n -> rname fmt n *)
+
+let region fmt = function
+  | T.Region.Region i -> digits fmt i
+  | Never -> Fmt.string fmt "ₙ"
+  | Global -> ()
+
 let rec kvar
   = fun fmt -> function
   | T.KUnbound (n,_) -> kname ~unbound:true fmt n
   | T.KLink t -> kind fmt t
 
 and kind fmt = function
-  | T.Un -> Format.fprintf fmt "un"
-  | T.Lin -> Format.fprintf fmt "lin"
+  | T.Un r -> Format.fprintf fmt "un%a" region r
+  | T.Aff r -> Format.fprintf fmt "aff%a" region r
   | T.KVar { contents = x } -> kvar fmt x
   | T.KGenericVar n -> kname fmt n
 
@@ -102,7 +118,8 @@ and typ
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
       (Format.pp_print_list ~pp_sep typ) e  name f
-  | T.Arrow (a,Un,b) -> Format.fprintf fmt "%a -> %a" typ_with_paren a  typ b
+  | T.Arrow (a,T.Un Global,b) ->
+    Format.fprintf fmt "%a -> %a" typ_with_paren a  typ b
   | T.Arrow (a,k,b) -> Format.fprintf fmt "%a -{%a}> %a" typ_with_paren a kind k  typ b
   | T.Var { contents = x } -> tyvar fmt x
   | T.GenericVar n -> tyname fmt n

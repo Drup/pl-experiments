@@ -27,7 +27,7 @@ type decl = {
 module Ty = struct
   type kind =
     | Un
-    | Lin
+    | Aff
     | KVar of Name.t
 
   type typ =
@@ -99,7 +99,7 @@ module Rename = struct
 
   let kind ~kenv = function
     | Ty.KVar {name} -> Ty.KVar (find name kenv)
-    | Ty.Un | Ty.Lin as k -> k
+    | Ty.Un | Ty.Aff as k -> k
   let constrs ~kenv l =
     List.map (fun (k1, k2) -> (kind ~kenv k1, kind ~kenv k2)) l
   let rec type_expr ~kenv ~tyenv ~venv = function
@@ -120,7 +120,7 @@ module Rename = struct
       else
         let n = Name.create ~name () in
         add name n kenv, Ty.KVar n
-    | Ty.Un | Ty.Lin as k -> kenv, k
+    | Ty.Un | Ty.Aff as k -> kenv, k
   let add_param (kenv, venv, params) (({name} : Name.t), k) =
     let kenv, k = add_kind ~kenv k in
     let n = Name.create ~name () in
