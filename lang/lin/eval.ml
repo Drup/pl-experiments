@@ -37,6 +37,7 @@ and subst x v e = match e with
     Let (y, subst x v e1, e2)
   | Match (constr, y, e1, e2) ->
     Match (constr, y, subst x v e1, e2)
+  | Borrow e -> Borrow (subst x v e)
 
 let subst_env = Name.Map.fold subst
 
@@ -79,6 +80,7 @@ let reduction_failure e =
 
 let rec eval i e = match e with
   | V v -> v
+  | Borrow e -> eval i e
   | Var _ -> reduction_failure e
   | Let (x,e1,e2) ->
     (* log_eval i e ; *)

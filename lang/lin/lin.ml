@@ -46,6 +46,10 @@ module Lin = Zoo.Main (struct
             Zoo.error ~kind:"Type error"
               "Cannot unify types %a and %a@."
               Printer.typ ty1 Printer.typ ty2
+          | Typing.Kind.Fail (k1, k2) ->
+            Zoo.error ~kind:"Kind error"
+              "Cannot unify kinds %a and %a@."
+              Printer.kind k1 Printer.kind k2
           | Env.Type_not_found name -> 
             Zoo.error "Unknwon type %a" Printer.name name
           | Env.Var_not_found name -> 

@@ -18,6 +18,7 @@ open Syntax
 %token REF BANG COLONEQUAL
 %token LESS GREATER
 %token DASHLACCO RACCOGREATER
+%token AND
 
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
@@ -45,6 +46,7 @@ expr:
      { App (f,List.rev l) }
   | LET name=name EQUAL e1=expr IN e2=expr { Let (name, e1, e2) }
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
+  | AND e=simple_expr { Borrow e }
 
 simple_expr:
   | v=value { V v }

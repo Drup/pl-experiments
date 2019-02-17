@@ -113,6 +113,19 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
      *   List.fold_left add_minified_edge G.empty edges
      * in *)
     g_minified
+  
+
+  exception FailLattice of K.t * K.t
+  let cleanup_edges g0 =
+    let cleanup_edge v1 v2 g =
+      match K.classify v1, K.classify v2 with
+      | `Constant l1, `Constant l2 ->
+        if Lat.(l1 < l2) then G.add_edge g v1 v2
+        else raise (FailLattice (v1, v2))
+      | _ -> G.add_edge g v1 v2
+    in
+    G.fold_edges cleanup_edge g0 G.empty
+
 
   let cleanup_vertices must_keep_vars g0 =
     let g0 = O.transitive_closure g0 in
@@ -142,6 +155,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
+    |> cleanup_edges
     |> cleanup_vertices keep_vars
     |> to_normal
 

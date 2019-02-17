@@ -6,6 +6,8 @@ type constant =
   | Set
   | Y
 
+
+
 type value =
   | Constant of constant
   | Lambda of Name.t * expr
@@ -15,6 +17,7 @@ type value =
 and expr =
   | V of value
   | Var of Name.t
+  | Borrow of expr
   | App of expr * expr list
   | Let of Name.t * expr * expr
   | Match of Name.t * Name.t * expr * expr
@@ -34,7 +37,8 @@ module Ty = struct
     | App of Name.t * typ list
     | Arrow of typ * kind * typ
     | Var of Name.t
-
+    | Borrow of typ
+  
   type constraints = (kind * kind) list
 
   type decl = {
@@ -82,6 +86,7 @@ module Rename = struct
   and expr env = function
     | V v -> V (value env v)
     | Var { name } -> Var (find name env)
+    | Borrow e -> Borrow (expr env e)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
     | Match (constr, p, e1, e2) ->
       let constr = find constr.name env in
@@ -111,6 +116,7 @@ module Rename = struct
       Ty.App (find name tyenv, List.map (type_expr ~kenv ~tyenv ~venv) args)
     | Ty.Var {name} ->
       Ty.Var (find name venv)
+    | Ty.Borrow ty -> Ty.Borrow (type_expr ~kenv ~tyenv ~venv ty)
 
 
   let add_kind ~kenv = function

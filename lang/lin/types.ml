@@ -36,6 +36,7 @@ type typ =
   | Arrow : typ * kind * typ -> typ
   | GenericVar : Name.t -> typ
   | Var : uvar ref -> typ
+  | Borrow : typ -> typ
 
 and uvar =
   | Unbound of Name.t * level
@@ -71,6 +72,7 @@ let kind ~name level =
   let n = Name.create ~name () in
   n, KVar (ref (KUnbound(n, level)))
 let gen_var () = let n = Name.create () in n, GenericVar n
+let gen_kind_var () = let n = Name.create () in n, KGenericVar n
 
 let tyscheme ?(constr=[]) ?(kvars=[]) ?(tyvars=[]) ty =
   { constr ; kvars ; tyvars ; ty }
@@ -86,6 +88,7 @@ let rec free_vars = function
   | GenericVar n -> Name.Set.singleton n
   | Var { contents = Link t } -> free_vars t
   | Var { contents = Unbound (n, _) } -> Name.Set.singleton n
+  | Borrow t -> free_vars t
 
 let free_vars_scheme { tyvars ; ty ; _ } =
   Name.Set.diff (free_vars ty) (Name.Set.of_list @@ List.map fst tyvars) 
