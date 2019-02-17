@@ -457,8 +457,7 @@ module Multiplicity = struct
 
   let weaken e v k0 : T.constr =
     match Name.Map.find_opt v e with
-    | Some [_] -> T.True
-    | None | Some [] -> T.KindLeq (k0, Kind.un)
+    | None -> T.True
     | Some ks ->
       C.cand @@ List.map (fun k -> C.(k <= k0)) ks
 end
