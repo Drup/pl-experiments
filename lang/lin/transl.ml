@@ -68,7 +68,7 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
     
   let kschm =
     let kvars = free_vars_kind k +++ free_vars_kinds kargs in
-    let constr = Constraint.Normal.simplify_solved ~keep_vars:kvars constr in
+    let constr = Typing.Kind.simplify constr in
     let kvars = free_vars_constrs constr +++ kvars in
     Types.kscheme ~constr ~kvars:(Name.Set.elements kvars) ~args:kargs k
   in
@@ -80,7 +80,7 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
     let tyvars, kvars = free_vars ty in
     assert Name.Set.(subset tyvars @@ of_list @@ List.map fst tyargs) ;
     let kvars = free_vars_kinds kargs +++ kvars in
-    let constr = Constraint.Normal.simplify_solved ~keep_vars:kvars constr in
+    let constr = Typing.Kind.simplify constr in
     Types.tyscheme ~constr ~tyvars:tyargs ~kvars:(Name.Set.elements kvars) ty
   in
   (name, kschm, constructor, tyschm)

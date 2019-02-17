@@ -13,54 +13,6 @@ module Normal = struct
   let get = function Left -> fst | Right -> snd
   let opp = function Left -> Right | Right -> Left
 
-  let split_equals : t -> t * t =
-    let rec remove_opp ((k1, k2) as constr) = function
-      | [] -> [], false
-      | (k1', k2') as constr' :: t ->
-        let l, b = remove_opp constr t in
-        if k2 == k1' && k1 == k2' then
-          l, true
-        else
-          constr' :: l, b
-    in
-    let rec aux = function
-      | [] -> [], []
-      | constr :: rest ->
-        let rest, b = remove_opp constr rest in
-        let l_eq, rest = aux rest in
-        if b then constr :: l_eq, rest else l_eq, constr :: rest
-    in
-    aux
-  
-  let simplify_solved =
-    let is_same_gen_var n = function
-      | T.KGenericVar n' -> Name.equal n n'
-      | _ -> false
-    in
-    let remove_kind k l =
-      let f (k1, k2) =
-        not (is_same_gen_var k k1 || is_same_gen_var k k2)
-      in
-      List.filter f l
-    and is_unused_gen_var side k l =
-      List.for_all (fun b -> not @@ is_same_gen_var k @@ get side b) l
-    in
-    let rec filter_useless ~keep_vars = function
-      | [] -> []
-      | constr :: t -> begin match constr with
-          | T.KGenericVar kleft , _
-            when not (Name.Set.mem kleft keep_vars)
-                && is_unused_gen_var Right kleft t ->
-            remove_kind kleft t
-          | _, T.KGenericVar kright
-            when not (Name.Set.mem kright keep_vars)
-                && is_unused_gen_var Left kright t ->
-            remove_kind kright t
-          | _ ->  constr :: filter_useless ~keep_vars t
-        end 
-    in
-    filter_useless
-
 end
 
 module type LAT = sig
@@ -193,9 +145,9 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> cleanup_vertices keep_vars
     |> to_normal
 
-  let simplify ~keep_vars l =
+  let simplify ?keep_vars l =
     from_normal l
-    |> cleanup_vertices (Some keep_vars)
+    |> cleanup_vertices keep_vars
     |> to_normal
 end
 
