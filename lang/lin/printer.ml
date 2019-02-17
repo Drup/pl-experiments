@@ -32,6 +32,8 @@ let kname ?(unbound=false) fmt n =
 (* let rname ?(unbound=false) fmt n =
  *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
 
+let borrow = function Read -> "" | Write -> "!"
+
 let rec value
   = fun fmt -> function
     | Constant c -> constant fmt c
@@ -50,8 +52,8 @@ and expr
   = fun fmt -> function
     | V v -> value fmt v
     | Var v -> name fmt v
-    | Borrow e ->
-      Format.fprintf fmt "&%a" expr_with_paren e
+    | Borrow (r,e) ->
+      Format.fprintf fmt "&%s%a" (borrow r) expr_with_paren e
     | App (f,e) ->
       Format.fprintf fmt "@[<2>@[%a@]@ %a@]"
         expr_with_paren f
@@ -116,7 +118,8 @@ and typ
   = fun fmt -> function
   | T.App (f,[]) ->
     name fmt f
-  | T.Borrow t -> Format.fprintf fmt "&%a" typ_with_paren t
+  | T.Borrow (r, t) ->
+    Format.fprintf fmt "&%s%a" (borrow r) typ_with_paren t
   | T.App (f,e) ->
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"

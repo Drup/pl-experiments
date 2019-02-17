@@ -53,8 +53,8 @@ module Instantiate = struct
     | T.App(ty, args) ->
       let args = List.map (instance_type ~level ~tbl ~ktbl) args in
       App(ty, args)
-    | T.Borrow ty ->
-      Borrow (instance_type ~level ~tbl ~ktbl ty)
+    | T.Borrow (r, ty) ->
+      Borrow (r, instance_type ~level ~tbl ~ktbl ty)
     | T.Arrow(param_ty, k, return_ty) ->
       Arrow(instance_type ~level ~tbl ~ktbl param_ty,
             instance_kind ~level ~ktbl k,
@@ -250,8 +250,8 @@ module Generalize = struct
       T.GenericVar id
     | T.App(ty, ty_args) ->
       App(ty, List.map (gen_ty ~env ~level ~tyenv ~kenv) ty_args)
-    | T.Borrow ty ->
-      Borrow (gen_ty ~env ~level ~tyenv ~kenv ty)
+    | T.Borrow (r, ty) ->
+      Borrow (r, gen_ty ~env ~level ~tyenv ~kenv ty)
     | T.Arrow(param_ty, k, return_ty) ->
       Arrow(gen_ty ~env ~level ~tyenv ~kenv param_ty,
             gen_kind ~level ~kenv k,
@@ -354,8 +354,10 @@ let rec infer_kind ~level ~env = function
     Instantiate.go_kind level @@ Env.find_ty n env
   | T.Var { contents = T.Link ty } ->
     infer_kind ~level ~env ty
-  | T.Borrow _ ->
-    Normal.ctrue, T.Un (Region.Region 1)
+  | T.Borrow (Read, _) ->
+    Normal.ctrue, T.Un (Region.Region level)
+  | T.Borrow (Write, _) ->
+    Normal.ctrue, T.Aff (Region.Region level)
 
 module Unif = struct
 
@@ -375,7 +377,7 @@ module Unif = struct
       | T.Arrow(param_ty, _,return_ty) ->
         f param_ty ;
         f return_ty
-      | T.Borrow ty -> f ty
+      | T.Borrow (_, ty) -> f ty
     in
     f ty
 
@@ -385,7 +387,7 @@ module Unif = struct
     | T.App(ty1, ty_arg1), T.App(ty2, ty_arg2) when Name.equal ty1 ty2 ->
       Normal.cand (List.map2 (unify env) ty_arg1 ty_arg2)
 
-    | T.Borrow (ty1), T.Borrow (ty2) ->
+    | T.Borrow (r1, ty1), T.Borrow (r2, ty2) when r1 = r2 ->
       unify env ty1 ty2
 
     | T.Arrow(param_ty1, k1, return_ty1), T.Arrow(param_ty2, k2, return_ty2) ->
@@ -476,10 +478,15 @@ let constant_scheme = let open T in function
         ~kvars:[kname]
         ~tyvars:[name, k]
         ~constr:[(k, T.Un Never)]
-        Builtin.(Borrow (ref a) @-> a )
+        Builtin.(Borrow (Read, ref a) @-> a )
     | Set ->
       let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kind.un] Builtin.( (ref a) @-> a @-> a )
+      let kname, k = T.gen_kind_var () in
+      tyscheme
+        ~kvars:[kname]
+        ~tyvars:[name, k]
+        ~constr:[(k, T.Aff Never)]
+        Builtin.(Borrow (Write, ref a) @-> a @-> a )
     | Y ->
       let name, a = T.gen_var () in
       tyscheme ~tyvars:[name, Kind.un] Builtin.((a @-> a) @-> a)
@@ -544,12 +551,12 @@ and infer (env : Env.t) level = function
     let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
     (Multiplicity.var name k), env, constr, t
 
-  | Borrow expr ->
+  | Borrow (r, expr) ->
     with_type ~name:"b" ~env ~level @@ fun env ret_ty _ ->
     let mults, env, constr, borrow_ty = infer env level expr in
     let constr = normalize_constr env [
         C.denormal constr ;
-        C.( T.Borrow borrow_ty === ret_ty ) ;
+        C.( T.Borrow (r, borrow_ty) === ret_ty ) ;
       ]
     in
     mults, env, constr, ret_ty

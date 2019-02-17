@@ -21,6 +21,9 @@ module Region = struct
 end
 
 type region = Region.t
+
+and borrow = Syntax.borrow = Read | Write
+
 and kind =
   | Un : region -> kind
   | Aff : region -> kind
@@ -36,7 +39,7 @@ type typ =
   | Arrow : typ * kind * typ -> typ
   | GenericVar : Name.t -> typ
   | Var : uvar ref -> typ
-  | Borrow : typ -> typ
+  | Borrow : borrow * typ -> typ
 
 and uvar =
   | Unbound of Name.t * level
@@ -88,7 +91,7 @@ let rec free_vars = function
   | GenericVar n -> Name.Set.singleton n
   | Var { contents = Link t } -> free_vars t
   | Var { contents = Unbound (n, _) } -> Name.Set.singleton n
-  | Borrow t -> free_vars t
+  | Borrow (_, t) -> free_vars t
 
 let free_vars_scheme { tyvars ; ty ; _ } =
   Name.Set.diff (free_vars ty) (Name.Set.of_list @@ List.map fst tyvars) 

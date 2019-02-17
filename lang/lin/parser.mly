@@ -19,11 +19,13 @@ open Syntax
 %token LESS GREATER
 %token DASHLACCO RACCOGREATER
 %token AND
+%token ANDBANG
+
 
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
 %left FUNAPP
-%nonassoc INT IDENT UIDENT LPAREN YTOK PLUS REF BANG COLONEQUAL
+%nonassoc AND ANDBANG INT IDENT UIDENT LPAREN YTOK PLUS REF BANG COLONEQUAL
 
 %start file
 %type <Syntax.command list> file
@@ -46,12 +48,14 @@ expr:
      { App (f,List.rev l) }
   | LET name=name EQUAL e1=expr IN e2=expr { Let (name, e1, e2) }
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
-  | AND e=simple_expr { Borrow e }
 
 simple_expr:
   | v=value { V v }
   | name=name { Var name }
   | LPAREN e=expr RPAREN { e }
+  | AND e=simple_expr { Borrow (Read, e) }
+  | ANDBANG e=simple_expr { Borrow (Write, e) }
+
 
 list_expr:
   | simple_expr  { [$1] }

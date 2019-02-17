@@ -14,7 +14,7 @@ let rec transl_type = function
     let tyargs = List.map transl_type l in
     App (t, tyargs)
   | Arrow (t1, k, t2) -> Arrow (transl_type t1, transl_kind k, transl_type t2)
-  | Borrow t -> Borrow (transl_type t)
+  | Borrow (r, t) -> Borrow (r, transl_type t)
 
 let transl_type_instance ~level ty = 
   let ty = transl_type ty in
@@ -50,7 +50,7 @@ let rec free_vars = function
   | Types.Arrow (ty1, k, ty2) ->
     let et1, ek1 = free_vars ty1 and et2, ek2 = free_vars ty2 in
     et1 +++ et2, ek1 +++ free_vars_kind k +++ ek2
-  | Types.Borrow t -> free_vars t
+  | Types.Borrow (_, t) -> free_vars t
 
 let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
   let env, kargs, tyargs =

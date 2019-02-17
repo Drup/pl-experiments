@@ -19,6 +19,7 @@ rule token = parse
   | "-{" { DASHLACCO }
   | "<" { LESS }
   | ">" { GREATER }
+  | "&!" { ANDBANG }
   | "&" { AND }
   | "}>" { RACCOGREATER }
   | '('	{ LPAREN }
