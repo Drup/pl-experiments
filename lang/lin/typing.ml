@@ -218,6 +218,7 @@ module Kind = struct
 
   let un = T.Un Global
   let constr = Normal.cleq
+  let first_class k = C.(k <= T.Aff Global)
 end
 
 (** Generalization *)
@@ -485,16 +486,19 @@ let with_type ~name ~env ~level f =
 let rec infer_value (env : Env.t) level = function
   | Constant c -> constant level env c
   | Lambda(param, body_expr) ->
-    let _, arrow_k = T.kind ~name:"r" level in
+    let _, arrow_k = T.kind ~name:"a" level in
     with_type ~name:param.name ~env ~level @@ fun env param_ty param_kind ->
+    with_type ~name:"r" ~env ~level @@ fun env return_var_ty return_kind ->
     let param_scheme = T.tyscheme param_ty in
     with_binding env param param_scheme @@ fun env ->
     let mults, env, constr, return_ty = infer env level body_expr in
     let mults_no_param = Multiplicity.drop mults param in
     let constr = normalize_constr env [
         C.denormal constr;
+        C.(return_ty === return_var_ty);
         Multiplicity.constraint_all mults_no_param arrow_k;
         Multiplicity.weaken mults param param_kind;
+        Kind.first_class return_kind;
       ]
     in
     mults_no_param, env, constr, T.Arrow (param_ty, arrow_k, return_ty)
