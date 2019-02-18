@@ -558,17 +558,15 @@ let rec infer_value (env : Env.t) level = function
   | Lambda(param, body_expr) ->
     let _, arrow_k = T.kind ~name:"a" level in
     with_type ~name:param.name ~env ~level @@ fun env param_ty param_kind ->
-    with_type ~name:"r" ~env ~level @@ fun env return_var_ty return_kind ->
     let param_scheme = T.tyscheme param_ty in
     with_binding env param param_scheme @@ fun env ->
-    let mults, env, constr, return_ty = infer env level body_expr in
-    let mults = Multiplicity.exit_scope mults in
+    let mults, env, constr, return_ty =
+      infer_region ~name:param.name env level body_expr
+    in
     let constr = normalize_constr env [
         C.denormal constr;
-        C.(return_ty === return_var_ty);
         Multiplicity.constraint_all mults arrow_k;
         Multiplicity.weaken mults param param_kind;
-        Kind.first_class return_kind;
       ]
     in
     Multiplicity.drop mults param, env, constr,
@@ -678,8 +676,20 @@ and infer_app (env : Env.t) level mults constr f_ty = function
     let mults = Multiplicity.union mults mults' in
     infer_app env level mults constr return_ty rest
 
+and infer_region ~name (env: Env.t) level expr =
+  with_type ~name ~env ~level @@ fun env return_ty return_kind ->
+  let mults, env, constr, infered_ty = infer env level expr in
+  let mults = Multiplicity.exit_scope mults in 
+  let constr = normalize_constr env [
+      C.denormal constr;
+      C.(return_ty === infered_ty);
+      Kind.first_class return_kind;
+    ]
+  in
+  mults, env, constr, return_ty
+
 let infer_top env0 e =
-  let _, env, constr, ty = infer env0 1 e in
+  let _, env, constr, ty = infer_region ~name:"top" env0 1 e in
   let env, constr, scheme = generalize env 0 constr ty e in
 
   (* Check that the residual constraints are satisfiable. *)
