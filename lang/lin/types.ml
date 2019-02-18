@@ -19,12 +19,16 @@ module Region = struct
     | Never, l | l, Never -> l
     | Global, _ | _, Global -> Global
 end
-
 type region = Region.t
 
-and borrow = Syntax.borrow = Read | Write
+module Borrow = struct
+  type t = Syntax.borrow = Read | Write
+  let max a b = match a, b with
+    | Read, Read -> Read
+    | Write, _ | _, Write -> Write
+end
 
-and kind =
+type kind =
   | Un : region -> kind
   | Aff : region -> kind
   | KGenericVar : Name.t -> kind
@@ -39,7 +43,7 @@ type typ =
   | Arrow : typ * kind * typ -> typ
   | GenericVar : Name.t -> typ
   | Var : uvar ref -> typ
-  | Borrow : borrow * typ -> typ
+  | Borrow : Borrow.t * typ -> typ
 
 and uvar =
   | Unbound of Name.t * level

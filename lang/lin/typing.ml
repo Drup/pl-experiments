@@ -8,6 +8,10 @@ module Normal = Constraint.Normal
 let fail fmt =
   Zoo.error ~kind:"Type error" fmt
 
+let is_var = function
+  | Var _ -> true
+  | _ -> false
+
 let rec is_nonexpansive = function
   | V (Constant _)
   | V (Lambda _)
@@ -226,6 +230,7 @@ module Kind = struct
     try solve ?keep_vars c with
     | FailLattice (k1, k2) -> raise (Fail (k1, k2))
   let un = T.Un Global
+  let aff = T.Aff Global
   let constr = Normal.cleq
   let first_class k = C.(k <= T.Aff Global)
 end
@@ -433,35 +438,72 @@ let normalize_constr env l =
 let normalize (env, constr, ty) = env, normalize_constr env [constr], ty
 
 module Multiplicity = struct
-  type t = (T.kind list) Name.Map.t
+  type use =
+    | Borrow of (T.Borrow.t * T.level)
+    | Normal of T.kind
+  type t = (use list) Name.Map.t
   let empty = Name.Map.empty
-  let var x k = Name.Map.singleton x [k]
-  let union e1 e2 =
+  let var x k = Name.Map.singleton x [Normal k]
+  let borrow ~level r (e : t) =
+    let f u = match u with
+      | Borrow _ -> u (* TODO: make sure this is ok *)
+      | Normal _ -> Borrow (r, level)
+    in
+    Name.Map.map (List.map f) e
+
+  let classify l =
+    let aux acc l = match acc, l with
+      | `Nothing, Borrow (r,l) -> `Borrow (r,[l])
+      | `Nothing, Normal k -> `Normal [k]
+      | `Borrow (r0, l0), Borrow (r, l) -> `Borrow (T.Borrow.max r0 r, l :: l0)
+      | `Normal l, Normal k -> `Normal (k :: l)
+      | `Borrow (_, _), Normal k -> `Normal [Kind.un; k]
+      | `Normal l, Borrow (_, _) -> `Normal (Kind.un :: l)
+    in
+    List.fold_left aux `Nothing l
+
+  let union (e1 : t) (e2 : t) =
     Name.Map.merge (fun _ v1 v2 -> match v1,v2 with
         | None, None -> None
         | b, None | None, b -> b
         | Some k1, Some k2 -> Some (k1 @ k2)
       ) e1 e2
-  let inter e1 e2 =
+  let inter (e1 : t) (e2 : t) =
     Name.Map.merge (fun _ v1 v2 -> match v1,v2 with
         | Some k1, Some k2 -> Some (k1 @ k2)
         | _ -> None
       ) e1 e2
-  let constraint_all e k0 : T.constr =
+
+  let constr_of_uses ~k0 l = match classify l with
+    | `Normal ks -> List.map (fun k -> C.(k <= k0)) ks
+    | `Borrow _ | `Nothing -> []
+  let constraint_all (e : t) k0 : T.constr =
     let l =
-      let aux _ ks l = List.map (fun k -> C.(k <= k0)) ks @ l in
+      let aux _ ks l = constr_of_uses ~k0 ks @ l in
       Name.Map.fold aux e []
     in
     C.cand l
-  let drop e x = Name.Map.remove x e
-  let constraint_inter e1 e2 =
+  let drop (e : t) x = Name.Map.remove x e
+  let constraint_inter (e1 : t) (e2 : t) =
     constraint_all (inter e1 e2) Kind.un
+      
+  let exit_scope (e : t) =
+    let aux u =
+      match classify u with
+      | `Borrow (Read, _) -> []
+      | `Borrow (Write, ([] | [_])) -> []
+      | `Borrow (Write, _) -> [Normal Kind.un]
+      | _ -> u
+    in
+    Name.Map.map aux e
 
-  let weaken e v k0 : T.constr =
+  let weaken (e : t) v k0 : T.constr =
     match Name.Map.find_opt v e with
     | None -> T.True
-    | Some ks ->
-      C.cand @@ List.map (fun k -> C.(k <= k0)) ks
+    | Some l -> match classify l with
+      | `Normal ks -> C.cand @@ List.map (fun k -> C.(k0 <= k)) ks
+      | `Borrow _ | `Nothing -> T.True
+
 end
 
 
@@ -520,16 +562,17 @@ let rec infer_value (env : Env.t) level = function
     let param_scheme = T.tyscheme param_ty in
     with_binding env param param_scheme @@ fun env ->
     let mults, env, constr, return_ty = infer env level body_expr in
-    let mults_no_param = Multiplicity.drop mults param in
+    let mults = Multiplicity.exit_scope mults in
     let constr = normalize_constr env [
         C.denormal constr;
         C.(return_ty === return_var_ty);
-        Multiplicity.constraint_all mults_no_param arrow_k;
+        Multiplicity.constraint_all mults arrow_k;
         Multiplicity.weaken mults param param_kind;
         Kind.first_class return_kind;
       ]
     in
-    mults_no_param, env, constr, T.Arrow (param_ty, arrow_k, return_ty)
+    Multiplicity.drop mults param, env, constr,
+    T.Arrow (param_ty, arrow_k, return_ty)
   | Ref v ->
     let mults, env, constr, ty = infer_value env level !v in
     mults, env, constr, (Builtin.ref ty)
@@ -554,6 +597,12 @@ and infer (env : Env.t) level = function
   | Borrow (r, expr) ->
     with_type ~name:"b" ~env ~level @@ fun env ret_ty _ ->
     let mults, env, constr, borrow_ty = infer env level expr in
+    let mults =
+      if is_var expr then
+        Multiplicity.borrow ~level r mults
+      else
+        mults
+    in
     let constr = normalize_constr env [
         C.denormal constr ;
         C.( T.Borrow (r, borrow_ty) === ret_ty ) ;

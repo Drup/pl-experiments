@@ -57,10 +57,11 @@ module Lin = Zoo.Main (struct
         in 
         let v = Eval.execute env.value expr in
         let env = { env with ty = types } in
-        Zoo.print_info "@[<2>%a@ : @[%a@]@ = @[%a@]@.%a@.%a@]@."
+        Zoo.print_info "@[<2>%a@ : @[%a@]@ = @[%a@]@.%a@]@."
           Printer.name name  Printer.scheme scheme  Printer.value v
           Printer.constrs constr
-          Printer.env env.ty ;
+          (* Printer.env env.ty *)
+        ;
         add_def name scheme v env
       | Syntax.Type decl ->
         let ty_name, ty_decl, constr_name, constr_decl =

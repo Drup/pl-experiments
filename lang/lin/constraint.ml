@@ -120,15 +120,13 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let cleanup_edge v1 v2 g =
       match K.classify v1, K.classify v2 with
       | `Constant l1, `Constant l2 ->
-        if Lat.(l1 < l2) then G.add_edge g v1 v2
+        if Lat.(l1 < l2) then g
         else raise (FailLattice (v1, v2))
       | _ -> G.add_edge g v1 v2
     in
     G.fold_edges cleanup_edge g0 G.empty
 
-
   let cleanup_vertices must_keep_vars g0 =
-    let g0 = O.transitive_closure g0 in
     let can_remove =
       match must_keep_vars with
       | Some vars -> fun k -> not (S.mem k vars)
@@ -142,7 +140,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       | `Var | `Constant _ -> g
     in
     let g_cleaned = G.fold_vertex cleanup_vertex g0 g0 in
-    O.transitive_reduction ~reflexive:true g_cleaned
+    g_cleaned
   
   let from_normal l =
     List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
@@ -155,13 +153,18 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
+    |> O.transitive_closure
     |> cleanup_edges
     |> cleanup_vertices keep_vars
+    |> O.transitive_reduction ~reflexive:true
     |> to_normal
 
   let simplify ?keep_vars l =
     from_normal l
+    |> O.transitive_closure
+    |> cleanup_edges
     |> cleanup_vertices keep_vars
+    |> O.transitive_reduction ~reflexive:true
     |> to_normal
 end
 

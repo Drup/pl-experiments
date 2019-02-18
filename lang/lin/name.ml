@@ -10,5 +10,5 @@ module M = struct
       { name ; id }
 end
 include M
-module Map = Map.Make(M)
-module Set = Set.Make(M)
+module Map = CCMap.Make(M)
+module Set = CCSet.Make(M)
