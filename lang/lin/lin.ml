@@ -9,22 +9,22 @@ module Lin = Zoo.Main (struct
     type environment = {
       ty : Env.t ;
       name: Syntax.Rename.env ;
-      value: Eval.env ;
+      (* value: Eval.env ; *)
     }
-    let add_def x ty v env = {
+    let add_def x ty _v env = {
       ty = Env.add x ty env.ty ;
       name = { env.name with env = Syntax.Rename.add x.name x env.name.env } ;
-      value = Eval.add x v env.value ;
+      (* value = Eval.add x v env.value ; *)
     }
     let add_decl ty schm env = {
       ty = Env.add_constr ty schm env.ty ;
       name = { env.name with tyenv = Syntax.Rename.add ty.name ty env.name.tyenv } ;
-      value = env.value ;
+      (* value = env.value ; *)
     }
     let initial_environment = {
       ty = Builtin.initial_env;
       name = Builtin.initial_rename_env;
-      value = Eval.initial_env ;
+      (* value = Eval.initial_env ; *)
     }
 
     let read_more str = 
@@ -54,11 +54,16 @@ module Lin = Zoo.Main (struct
             Zoo.error "Unknwon type %a" Printer.name name
           | Env.Var_not_found name -> 
             Zoo.error "Unknwon variable %a" Printer.name name
-        in 
-        let v = Eval.execute env.value expr in
+        in
+        let v = () in
+        (* let v = Eval.execute env.value expr in *)
         let env = { env with ty = types } in
-        Zoo.print_info "@[<2>%a@ : @[%a@]@ = @[%a@]@.%a@]@."
-          Printer.name name  Printer.scheme scheme  Printer.value v
+        Zoo.print_info "@[<2>%a@ = @[%a@]@]@."
+          Printer.name name  Printer.expr expr
+        ;
+        Zoo.print_info "@[<2>%a@ : @[%a@]@.%a@]@."
+          Printer.name name  Printer.scheme scheme
+          (* Printer.value v *)
           Printer.constrs constr
           (* Printer.env env.ty *)
         ;
@@ -74,7 +79,7 @@ module Lin = Zoo.Main (struct
           Printer.name constr_name
           Printer.scheme constr_decl ;        
         env
-        |> add_def constr_name constr_decl (Syntax.Constructor (constr_name, None))
+        |> add_def constr_name constr_decl (Syntax.Constructor constr_name)
         |> add_decl ty_name ty_decl
   end)
 

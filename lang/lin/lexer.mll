@@ -24,15 +24,20 @@ rule token = parse
   | "}>" { RACCOGREATER }
   | '('	{ LPAREN }
   | ')'	{ RPAREN }
+  | '{'	{ LACCO }
+  | '}'	{ RACCO }
+  | "[|"	{ LBRACKPIPE }
+  | "|]"	{ PIPERBRACK }
   | "type" { TYPE }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
   | "'" ([ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
   | ([ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
   | ([ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }
-  | eof	{ EOF }
   | ":" { DOUBLECOLON }
   | "," { COMMA }
   | "un" { UN }
   | "aff" { AFF }
+  | ';' { SEMI }
   | ";;"	{ SEMISEMI }
+  | eof	{ EOF }

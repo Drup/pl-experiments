@@ -6,9 +6,10 @@ let bold fmt s = Format.fprintf fmt "@<0>%s%s@<0>%s" "\027[1m" s "\027[0m"
 let constant fmt = function
   | Int i -> Format.pp_print_int fmt i
   | Plus -> bold fmt "+"
-  | NewRef -> bold fmt "new"
-  | Get -> bold fmt "!"
-  | Set -> bold fmt ":="
+  | Alloc -> bold fmt "alloc"
+  | Free -> bold fmt "free"
+  | Get -> bold fmt "get"
+  | Set -> bold fmt "set"
   | Y -> bold fmt "Y" 
 
 let indice_array = [|"₀";"₁";"₂";"₃";"₄";"₅";"₆";"₇";"₈";"₉"|]
@@ -28,32 +29,46 @@ let name fmt {Name. name ; id } =
 let tyname ?(unbound=false) fmt n =
   Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
 let kname ?(unbound=false) fmt n =
-  Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
+  Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n
 (* let rname ?(unbound=false) fmt n =
  *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
 
 let borrow = function Read -> "" | Write -> "!"
 
-let rec value
+(* let rec value
+ *   = fun fmt -> function
+ *     | Constant c -> constant fmt c
+ *     | Constructor c -> name fmt c
+ *     | Constructor (c, Some v) ->
+ *       Format.fprintf fmt "@[<2>%a (%a)]" name c value v
+ *     | Lambda (n,e) ->
+ *       Format.fprintf fmt "@[<2>%a %a %a@ %a@]"
+ *         bold "fun"
+ *         name n
+ *         bold "->"
+ *         expr e
+ *     | Array a -> Format.fprintf fmt "{%a}" (Fmt.array value) a
+ *     | Unit -> Fmt.string fmt "()" *)
+
+let rec expr
   = fun fmt -> function
     | Constant c -> constant fmt c
-    | Constructor (c, None) -> name fmt c
-    | Constructor (c, Some v) ->
-      Format.fprintf fmt "@[<2>%a (%a)]" name c value v
+    | Constructor c -> name fmt c
     | Lambda (n,e) ->
       Format.fprintf fmt "@[<2>%a %a %a@ %a@]"
         bold "fun"
         name n
         bold "->"
         expr e
-    | Ref { contents } -> Format.fprintf fmt "{%a}" value contents
-
-and expr
-  = fun fmt -> function
-    | V v -> value fmt v
+    | Array a ->
+      Format.fprintf fmt "@[[|@ %a@ |]@]" Fmt.(list ~sep:(unit ";@ ") expr) a
+    | App (Constant Plus, [e1; e2]) ->
+      Format.fprintf fmt "@[<2>@[%a@]@ + @[%a@]@]"
+        expr_with_paren e1
+        expr_with_paren e2
     | Var v -> name fmt v
-    | Borrow (r,e) ->
-      Format.fprintf fmt "&%s%a" (borrow r) expr_with_paren e
+    | Borrow (r,v) ->
+      Format.fprintf fmt "&%s%a" (borrow r) name v
     | App (f,e) ->
       Format.fprintf fmt "@[<2>@[%a@]@ %a@]"
         expr_with_paren f
@@ -68,13 +83,23 @@ and expr
         bold "let" name constr name n
         bold "=" expr e1
         bold "in" expr e2
+    | Region e ->
+      Fmt.braces expr fmt e
 
 and expr_with_paren fmt x =
   let must_have_paren = match x with
-    | App _ -> true
-    | Let _ -> true
-    | V (Lambda _) -> true
-    | _ -> false
+    | App _
+    | Let _
+    | Match (_, _, _, _)
+    | Lambda _
+      -> true
+    | Constant _
+    | Array _
+    | Constructor _
+    | Var _
+    | Borrow (_, _)
+    | Region _
+      -> false
   in
   Format.fprintf fmt
     (if must_have_paren then "@[(%a@])" else "%a") expr x 

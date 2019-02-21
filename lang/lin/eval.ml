@@ -1,8 +1,17 @@
 open Syntax
 
+type address = Name.t
+type value =
+  | Array of value array
+  | Constant of constant
+  | Closure of env * Name.t * expr
+  | Address of address
+  | Constructor of Name.t * value list
+  | Borrow of borrow * address
+and env = value Name.Map.t
+
 (** Global Environment *)
 
-type env = value Name.Map.t
 let initial_env = Name.Map.empty
 let add = Name.Map.add
 let find x env =
@@ -14,13 +23,14 @@ let find x env =
 (** Substitutions *)
 
 let rec subst_value x v = function
-  | Constructor (c, None) -> Constructor (c, None)
+  | Constructor c -> Constructor c
   | Constructor (c, Some v') -> Constructor (c, Some (subst_value x v v'))
   | Constant c -> Constant c
   | Lambda (y,e) when not @@ Name.equal x y ->
     (Lambda (y, subst x v e))
   | Lambda (_, _)
-  | Ref _
+  | Array _
+  | Unit
     as v -> v
 
 (** e[x -> v] *)
@@ -54,14 +64,14 @@ let delta c v = match c,v with
   | Plus, [ Constant (Int i) ] ->
     let n = Name.create ~name:"i" () in
     Some (V (Lambda (n, App (const Plus, [const @@ Int i; Var n]))))
-      
-  | NewRef, [ v ] -> Some (V (Ref (ref v)))
-  | Get, [ Ref r ] -> Some (V !r)
-  | Set, [ Ref r ] ->
-    let n = Name.create ~name:"r" () in
-    Some (V (Lambda (n, App (const Set, [V (Ref r); Var n]))))
-  | Set, [ Ref r ; v ] -> r := v ; Some (V v)
-      
+
+  (* | Alloc, [ Constant (Int i) ; v ] -> Some (V (Array (Array.make i v))) *)
+  | Get, [ Array r ; Constant (Int i) ] -> Some (V r.(i))
+  (* | Set, [ Array r ] ->
+   *   let n = Name.create ~name:"r" () in
+   *   Some (V (Lambda (n, App (const Set, [V (Ref r); Var n])))) *)
+  | Set, [ Array r ; Constant (Int i) ; v ] -> r.(i) <- v ; Some (V Unit)
+
   | Y, ve::t ->
     let n = Name.create ~name:"Y" () in
     let args = List.map value t in
@@ -106,7 +116,8 @@ and eval_app i eorig f l = match f, l with
   | _, [] -> f
   | Constructor (x, None), [param] -> Constructor (x, Some param)
   | Constructor (_, _), _ -> reduction_failure eorig
-  | Ref _, _ -> reduction_failure eorig
+  | Array _, _ -> reduction_failure eorig
+  | Unit, _ -> reduction_failure eorig
   | Lambda(x, body), (v :: t) ->
     eval_app i eorig (eval (i+1) @@ subst x v body) t
   | Constant c, l ->

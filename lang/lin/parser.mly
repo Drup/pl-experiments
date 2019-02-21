@@ -11,7 +11,10 @@ open Syntax
 %token UN AFF
 %token EQUAL PLUS
 %token LPAREN RPAREN
+%token LACCO RACCO
+%token LBRACKPIPE PIPERBRACK
 %token LET IN
+%token SEMI
 %token TYPE
 %token RIGHTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
@@ -22,10 +25,12 @@ open Syntax
 %token ANDBANG
 
 
+%nonassoc IN
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
 %left FUNAPP
-%nonassoc AND ANDBANG INT IDENT UIDENT LPAREN YTOK PLUS REF BANG COLONEQUAL
+%left PLUS
+%nonassoc AND ANDBANG INT IDENT UIDENT LPAREN LACCO LBRACKPIPE YTOK REF BANG COLONEQUAL
 
 %start file
 %type <Syntax.command list> file
@@ -46,30 +51,31 @@ expr:
   | e=simple_expr %prec FUN { e }
   | f=simple_expr l=list_expr %prec FUNAPP
      { App (f,List.rev l) }
+  | e1=expr PLUS e2=expr
+    { App (Constant Plus, [e1;e2]) }
   | LET name=name EQUAL e1=expr IN e2=expr { Let (name, e1, e2) }
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
 
 simple_expr:
-  | v=value { V v }
+  | FUN name=name RIGHTARROW e=expr { Lambda (name, e) }
+  | c=constant { Constant c }
+  | name=uname { Constructor (name) }
   | name=name { Var name }
+  | LPAREN RPAREN { Builtin.unit }
   | LPAREN e=expr RPAREN { e }
-  | AND e=simple_expr { Borrow (Read, e) }
-  | ANDBANG e=simple_expr { Borrow (Write, e) }
+  | LACCO e=expr RACCO { Region e }
+  | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
+  | AND name=name { Borrow (Read, name) }
+  | ANDBANG name=name { Borrow (Write, name) }
 
 
 list_expr:
   | simple_expr  { [$1] }
   | list_expr simple_expr { $2 :: $1 }
 
-%inline value:
-  | FUN name=name RIGHTARROW e=expr { Lambda (name, e) }
-  | c=constant { Constant c }
-  | name=uname { Constructor (name, None) }
-
 constant:
   | i=INT { Int i }
-  | PLUS { Plus }
-  | REF { NewRef }
+  | REF { Alloc }
   | BANG { Get }
   | COLONEQUAL { Set }
   | YTOK { Y }

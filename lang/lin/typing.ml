@@ -13,17 +13,23 @@ let is_var = function
   | _ -> false
 
 let rec is_nonexpansive = function
-  | V (Constant _)
-  | V (Lambda _)
-  | V (Constructor (_, None))
-  | Var _ -> true
+  | Constant _
+  | Lambda _
+  | Constructor _
+  | Var _
+  | Borrow _
+    -> true
+  | Array l ->
+    List.for_all is_nonexpansive l
+  | App (Constructor _, l) ->
+    List.for_all is_nonexpansive l
+  | Region e -> is_nonexpansive e
   | Let (_, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
   | Match (_, _, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
-  | App (V (Constructor (_, None)), [e]) ->
-    is_nonexpansive e
-  | _ -> false
+  | App (_, _)
+    -> false
 
 (** Instance *)
 module Instantiate = struct
@@ -510,9 +516,12 @@ end
 let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int
     | Plus  -> tyscheme Builtin.(int @-> int @-> int)
-    | NewRef ->
+    | Alloc ->
       let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kind.un] Builtin.(a @-> ref a)
+      tyscheme ~tyvars:[name, Kind.un] Builtin.(a @-> array a)
+    | Free -> 
+      let name, a = T.gen_var () in
+      tyscheme ~tyvars:[name, Kind.un] Builtin.(array a @-> unit_ty)
     | Get ->
       let name, a = T.gen_var () in
       let kname, k = T.gen_kind_var () in
@@ -520,7 +529,7 @@ let constant_scheme = let open T in function
         ~kvars:[kname]
         ~tyvars:[name, k]
         ~constr:[(k, T.Un Never)]
-        Builtin.(Borrow (Read, ref a) @-> a )
+        Builtin.(Borrow (Read, array a) @-> a )
     | Set ->
       let name, a = T.gen_var () in
       let kname, k = T.gen_kind_var () in
@@ -528,7 +537,7 @@ let constant_scheme = let open T in function
         ~kvars:[kname]
         ~tyvars:[name, k]
         ~constr:[(k, T.Aff Never)]
-        Builtin.(Borrow (Write, ref a) @-> a @-> a )
+        Builtin.(Borrow (Write, array a) @-> a @-> unit_ty)
     | Y ->
       let name, a = T.gen_var () in
       tyscheme ~tyvars:[name, Kind.un] Builtin.((a @-> a) @-> a)
@@ -553,7 +562,7 @@ let with_type ~name ~env ~level f =
   let env = Env.add_ty var_name kind_scheme env in
   f env ty kind
 
-let rec infer_value (env : Env.t) level = function
+let rec infer (env : Env.t) level = function
   | Constant c -> constant level env c
   | Lambda(param, body_expr) ->
     let _, arrow_k = T.kind ~name:"a" level in
@@ -561,7 +570,7 @@ let rec infer_value (env : Env.t) level = function
     let param_scheme = T.tyscheme param_ty in
     with_binding env param param_scheme @@ fun env ->
     let mults, env, constr, return_ty =
-      infer_region ~name:param.name env level body_expr
+      infer env level body_expr
     in
     let constr = normalize_constr env [
         C.denormal constr;
@@ -571,36 +580,20 @@ let rec infer_value (env : Env.t) level = function
     in
     Multiplicity.drop mults param, env, constr,
     T.Arrow (param_ty, arrow_k, return_ty)
-  | Ref v ->
-    let mults, env, constr, ty = infer_value env level !v in
-    mults, env, constr, (Builtin.ref ty)
-  | Constructor (_name, Some _) -> assert false
-  | Constructor (name, None) ->
+  | Array elems -> infer_array env level elems 
+  | Constructor name ->
     let env, constr1, t = instantiate level env @@ Env.find name env in
     let constr2, k = infer_kind ~level ~env t in
     assert (k = Kind.un) ;
     let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
     Multiplicity.empty, env, constr, t
 
-and infer (env : Env.t) level = function
-  | V v ->
-    infer_value env level v
+  | Var name -> infer_var env level name
 
-  | Var name ->
-    let env, constr1, t = instantiate level env @@ Env.find name env in
-    let constr2, k = infer_kind ~level ~env t in
-    let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
-    (Multiplicity.var name k), env, constr, t
-
-  | Borrow (r, expr) ->
-    with_type ~name:"b" ~env ~level @@ fun env ret_ty _ ->
-    let mults, env, constr, borrow_ty = infer env level expr in
-    let mults =
-      if is_var expr then
-        Multiplicity.borrow ~level r mults
-      else
-        mults
-    in
+  | Borrow (r, name) ->
+    with_type ~name:name.name ~env ~level @@ fun env ret_ty _ ->
+    let mults, env, constr, borrow_ty = infer_var env level name in
+    let mults = Multiplicity.borrow ~level r mults in
     let constr = normalize_constr env [
         C.denormal constr ;
         C.( T.Borrow (r, borrow_ty) === ret_ty ) ;
@@ -657,39 +650,78 @@ and infer (env : Env.t) level = function
     let mults = Multiplicity.union mults1 mults2 in
     mults, env, constr, body_ty
   | App(fn_expr, arg) ->
-    let mults, env, f_constr, f_ty = infer env level fn_expr in
-    infer_app env level mults (C.denormal f_constr) f_ty arg
+    infer_app env level fn_expr arg
 
-and infer_app (env : Env.t) level mults constr f_ty = function
-  | [] -> mults, env, normalize_constr env [constr], f_ty
-  | arg :: rest ->
-    let mults', env, param_constr, param_ty = infer env level arg in
-    let _, k = T.kind ~name:"a" level in
-    with_type ~name:"a" ~level ~env @@ fun env return_ty _ ->
-    let constr = C.cand [
-        Multiplicity.constraint_inter mults mults';
-        C.denormal param_constr;
-        C.(T.Arrow (param_ty, k, return_ty) === f_ty);
-        constr;
+  | Region expr ->
+    with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
+    let mults, env, constr, infered_ty = infer env level expr in
+    let mults = Multiplicity.exit_scope mults in 
+    let constr = normalize_constr env [
+        C.denormal constr;
+        C.(return_ty === infered_ty);
+        Kind.first_class return_kind;
       ]
     in
-    let mults = Multiplicity.union mults mults' in
-    infer_app env level mults constr return_ty rest
+    mults, env, constr, return_ty
 
-and infer_region ~name (env: Env.t) level expr =
-  with_type ~name ~env ~level @@ fun env return_ty return_kind ->
-  let mults, env, constr, infered_ty = infer env level expr in
-  let mults = Multiplicity.exit_scope mults in 
+and infer_var env level name =
+  let env, constr1, t = instantiate level env @@ Env.find name env in
+  let constr2, k = infer_kind ~level ~env t in
+  let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
+  (Multiplicity.var name k), env, constr, t
+
+and infer_many (env : Env.t) level mult l =
+  let rec aux mults0 env0 constr0 tys = function
+    | [] -> (mults0, env0, constr0, List.rev tys)
+    | expr :: rest ->
+      let mults, env, constr, ty = infer env level expr in
+      let constr = C.cand [
+          Multiplicity.constraint_inter mults0 mults;
+          C.denormal constr;
+          constr0;
+        ]
+      in
+      let mults = Multiplicity.union mults mults0 in
+      aux mults env constr (ty :: tys) rest
+  in aux mult env True [] l
+
+and infer_app (env : Env.t) level fn_expr args =
+  let f (f_ty, env) param_ty =
+    let _, k = T.kind ~name:"a" level in
+    with_type ~name:"a" ~level ~env @@ fun env return_ty _ ->
+    let constr = C.(T.Arrow (param_ty, k, return_ty) === f_ty) in
+    (return_ty, env), constr
+  in
+  let mults, env, fn_constr, fn_ty = infer env level fn_expr in
+  let mults, env, arg_constr, tys = infer_many env level mults args in
+  let (return_ty, env), app_constr = CCList.fold_map f (fn_ty, env) tys in
   let constr = normalize_constr env [
-      C.denormal constr;
-      C.(return_ty === infered_ty);
-      Kind.first_class return_kind;
+      C.denormal fn_constr ;
+      arg_constr ;
+      C.cand app_constr ;
     ]
   in
   mults, env, constr, return_ty
 
+and infer_array (env : Env.t) level args =
+  with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
+  let f env elem_ty =
+    let constr = C.(elem_ty === array_ty) in
+    env, constr
+  in
+  let mults, env, constrs, tys =
+    infer_many env level Multiplicity.empty args
+  in
+  let env, elem_constr = CCList.fold_map f env tys in
+  let constr = normalize_constr env [
+      constrs ;
+      C.cand elem_constr ;
+    ]
+  in
+  mults, env, constr, Builtin.array array_ty
+
 let infer_top env0 e =
-  let _, env, constr, ty = infer_region ~name:"top" env0 1 e in
+  let _, env, constr, ty = infer env0 1 e in
   let env, constr, scheme = generalize env 0 constr ty e in
 
   (* Check that the residual constraints are satisfiable. *)

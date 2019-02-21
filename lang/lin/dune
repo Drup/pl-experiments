@@ -1,5 +1,8 @@
 (ocamllex lexer)
-(menhir (modules parser))
+(menhir
+  (modules parser)
+  (flags --explain --strict)
+)
 
 (executable
   (name lin)

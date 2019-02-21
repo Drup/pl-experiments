@@ -1,27 +1,25 @@
 type constant =
   | Int of int
   | Plus
-  | NewRef
+  | Alloc
+  | Free
   | Get
   | Set
   | Y
 
-
 type borrow = Read | Write
 
-type value =
+type expr =
   | Constant of constant
   | Lambda of Name.t * expr
-  | Ref of value ref
-  | Constructor of Name.t * value option
-
-and expr =
-  | V of value
+  | Array of expr list
+  | Constructor of Name.t
   | Var of Name.t
-  | Borrow of borrow * expr
+  | Borrow of borrow * Name.t
   | App of expr * expr list
   | Let of Name.t * expr * expr
   | Match of Name.t * Name.t * expr * expr
+  | Region of expr
 
 type decl = {
   name : Name.t ;
@@ -74,20 +72,18 @@ module Rename = struct
 
   let add n k env = SMap.add n k env
 
-  let rec value env = function
+  let rec expr env = function
     | Lambda ({name}, e) ->
       let new_name = Name.create ~name () in
       let env = add name new_name env in
       let e = expr env e in
       Lambda (new_name, e)
-    | Constructor ({name}, None) -> Constructor (find name env, None)
-    | Constructor ({name}, Some v) -> Constructor (find name env, Some (value env v))
-    | Constant _ | Ref _  as e -> e
-
-  and expr env = function
-    | V v -> V (value env v)
+    | Constructor ({name}) -> Constructor (find name env)
+    | Constant _ as e -> e
+    | Array l  -> Array (List.map (expr env) l)
+    | Region e -> Region (expr env e)
     | Var { name } -> Var (find name env)
-    | Borrow (r, e) -> Borrow (r, expr env e)
+    | Borrow (r, {name}) -> Borrow (r, find name env)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
     | Match (constr, p, e1, e2) ->
       let constr = find constr.name env in
