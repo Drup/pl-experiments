@@ -14,7 +14,7 @@ let rec transl_type = function
     let tyargs = List.map transl_type l in
     App (t, tyargs)
   | Arrow (t1, k, t2) -> Arrow (transl_type t1, transl_kind k, transl_type t2)
-  | Borrow (r, t) -> Borrow (r, transl_type t)
+  | Borrow (r, k, t) -> Borrow (r, transl_kind k, transl_type t)
 
 let transl_type_instance ~level ty = 
   let ty = transl_type ty in
@@ -22,36 +22,8 @@ let transl_type_instance ~level ty =
   let ktbl = Hashtbl.create 10 in
   Typing.Instantiate.instance_type ~level ~tbl ~ktbl ty
 
+module FV = Types.Free_vars
 let (+++) = Name.Set.union
-
-let free_vars_kind = function
-  | Types.KGenericVar n -> Name.Set.singleton n
-  | Types.KVar _ -> assert false
-  | Types.Un _ | Types.Aff _ -> Name.Set.empty
-
-let free_vars_kinds l =
-  List.fold_left
-    (fun e k -> free_vars_kind k +++ e)
-    Name.Set.empty l
-
-let free_vars_constrs l =
-  List.fold_left
-    (fun e (k1, k2) -> free_vars_kind k1 +++ free_vars_kind k2 +++ e)
-    Name.Set.empty l
-
-let rec free_vars = function
-  | Types.GenericVar n -> Name.Set.singleton n, Name.Set.empty
-  | Types.Var _ -> assert false
-  | Types.App (_, args) ->
-    List.fold_left (fun (et, ek) t ->
-        let et', ek' = free_vars t in
-        et +++ et', ek +++ ek'
-      ) Name.Set.(empty, empty) args
-  | Types.Arrow (ty1, k, ty2) ->
-    let et1, ek1 = free_vars ty1 and et2, ek2 = free_vars ty2 in
-    et1 +++ et2, ek1 +++ free_vars_kind k +++ ek2
-  | Types.Borrow (_, t) -> free_vars t
-
 let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
   let env, kargs, tyargs =
     List.fold_right (fun (var, kind) (env, kargs, tyargs) ->
@@ -69,9 +41,9 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
   in
     
   let kschm =
-    let kvars = free_vars_kind k +++ free_vars_kinds kargs in
+    let kvars = FV.kind k +++ FV.kinds kargs in
     let constr = Typing.Kind.simplify constr in
-    let kvars = free_vars_constrs constr +++ kvars in
+    let kvars = FV.constrs constr +++ kvars in
     Types.kscheme ~constr ~kvars:(Name.Set.elements kvars) ~args:kargs k
   in
   let tyschm =
@@ -79,9 +51,9 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
       Arrow (constr_typ, Un Global,
              App (name, List.map (fun (x, _) -> Types.GenericVar x) tyargs))
     in
-    let tyvars, kvars = free_vars ty in
+    let tyvars, kvars = FV.types ty in
     assert Name.Set.(subset tyvars @@ of_list @@ List.map fst tyargs) ;
-    let kvars = free_vars_kinds kargs +++ kvars in
+    let kvars = FV.kinds kargs +++ kvars in
     let constr = Typing.Kind.simplify constr in
     Types.tyscheme ~constr ~tyvars:tyargs ~kvars:(Name.Set.elements kvars) ty
   in

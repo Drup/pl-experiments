@@ -45,7 +45,9 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   module Check = Graph.Path.Check(G)
   module Scc = Graph.Components.Make(G)
   module O = Graph.Oper.P(G)
-  module S = Set.Make(G.V)
+  module Map = CCMap.Make(G.V)
+  module Set = CCSet.Make(G.V)
+  module H = Hashtbl.Make(G.V)
 
   let add_lattice_inequalities g0 =
     let constants = 
@@ -116,32 +118,87 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   
 
   exception FailLattice of K.t * K.t
-  let cleanup_edges g0 =
-    let cleanup_edge v1 v2 g =
-      match K.classify v1, K.classify v2 with
-      | `Constant l1, `Constant l2 ->
-        if Lat.(l1 < l2) then g
-        else raise (FailLattice (v1, v2))
-      | _ -> G.add_edge g v1 v2
-    in
-    G.fold_edges cleanup_edge g0 G.empty
 
-  let cleanup_vertices must_keep_vars g0 =
-    let can_remove =
-      match must_keep_vars with
-      | Some vars -> fun k -> not (S.mem k vars)
-      | None -> fun _ -> false
-    in
-    let cleanup_vertex v g =
-      match K.classify v with
-      | `Var when can_remove v -> G.remove_vertex g v
-      | `Constant c when Lat.(c = smallest) || Lat.(c = biggest) ->
-        G.remove_vertex g v
-      | `Var | `Constant _ -> g
-    in
-    let g_cleaned = G.fold_vertex cleanup_vertex g0 g0 in
-    g_cleaned
-  
+  module Simplify = struct
+    let edges g0 =
+      let cleanup_edge v1 v2 g =
+        match K.classify v1, K.classify v2 with
+        | `Constant l1, `Constant l2 ->
+          if Lat.(l1 < l2) then g
+          else raise (FailLattice (v1, v2))
+        | _ -> G.add_edge g v1 v2
+      in
+      G.fold_edges cleanup_edge g0 G.empty
+
+    let unused_variables vars g0 =
+      match vars with
+      | None -> g0
+      | Some vars ->
+        let cleanup_vertex v g =
+          match K.classify v with
+          | `Var when not (Map.mem v vars) -> G.remove_vertex g v
+          | `Var | `Constant _ -> g
+        in
+        G.fold_vertex cleanup_vertex g0 g0
+
+    (* Slightly modified version of Graph.Contraction(G).contract *)
+    let contract prop unify g =
+      (* if the edge is to be removed (property = true):
+       * make a union of the two union-sets of start and end node;
+       * put this set in the map for all nodes in this set *)
+      let collect_clusters edge (m, edges) =
+        if prop edge then
+          let s_src, s_dst = Map.find (G.E.src edge) m, Map.find (G.E.dst edge) m in
+          let s = Set.union s_src s_dst in
+          let m = Set.fold (fun vertex m -> Map.add vertex s m) s m in
+          m, edges
+        else
+          m, edge :: edges
+      in
+      (* initialize map with singleton-sets for every node (of itself) *)
+      let m =
+        G.fold_vertex (fun vertex m -> Map.add vertex (Set.singleton vertex) m)
+          g Map.empty
+      in
+      (* find all closures *)
+      let m, remaining_edges = G.fold_edges_e collect_clusters g (m, []) in
+      (* WARNING: side effects in unify, the graph is invalid afterwards *)
+      Map.iter (fun _ ks -> ignore @@ unify ks) m;
+      let add_minified_edge g (v1, v2) = G.add_edge g v1 v2 in
+      List.fold_left add_minified_edge G.empty remaining_edges
+
+    let simplify_with_position variance_map g0 =
+      match variance_map with
+      | None -> g0
+      | Some variance_map ->
+        let p (v1, v2) =
+          match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
+          | Some `Neg, _ when G.out_degree g0 v1 = 1 -> true
+          | _, Some `Pos when G.in_degree g0 v2 = 1 -> true
+          | _ -> false
+        in
+        let unif ks = K.unify @@ Set.elements ks in
+        contract p unif g0
+
+    let bounds g0 = 
+      let cleanup_vertex v g =
+        match K.classify v with
+        | `Constant c when Lat.(c = smallest) || Lat.(c = biggest) ->
+          G.remove_vertex g v
+        | `Var | `Constant _ -> g
+      in
+      G.fold_vertex cleanup_vertex g0 g0
+
+    let go keep_vars g = 
+      g
+      |> O.transitive_closure
+      |> edges
+      |> unused_variables keep_vars
+      (* |> simplify_with_position keep_vars *)
+      |> bounds
+      |> O.transitive_reduction ~reflexive:true
+  end
+
   let from_normal l =
     List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
 
@@ -153,18 +210,12 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
-    |> O.transitive_closure
-    |> cleanup_edges
-    |> cleanup_vertices keep_vars
-    |> O.transitive_reduction ~reflexive:true
+    |> Simplify.go keep_vars
     |> to_normal
 
   let simplify ?keep_vars l =
     from_normal l
-    |> O.transitive_closure
-    |> cleanup_edges
-    |> cleanup_vertices keep_vars
-    |> O.transitive_reduction ~reflexive:true
+    |> Simplify.go keep_vars
     |> to_normal
 end
 

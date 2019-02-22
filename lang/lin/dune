@@ -7,6 +7,7 @@
 (executable
   (name lin)
   (libraries ocamlgraph zoo)
+  (preprocess (pps ppx_deriving.std))
 )
 
 (alias

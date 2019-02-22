@@ -18,9 +18,9 @@ let rec is_nonexpansive = function
   | Constructor _
   | Var _
   | Borrow _
+  | Array []
     -> true
-  | Array l ->
-    List.for_all is_nonexpansive l
+  | Tuple l
   | App (Constructor _, l) ->
     List.for_all is_nonexpansive l
   | Region e -> is_nonexpansive e
@@ -29,6 +29,7 @@ let rec is_nonexpansive = function
   | Match (_, _, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
   | App (_, _)
+  | Array _
     -> false
 
 (** Instance *)
@@ -63,8 +64,13 @@ module Instantiate = struct
     | T.App(ty, args) ->
       let args = List.map (instance_type ~level ~tbl ~ktbl) args in
       App(ty, args)
-    | T.Borrow (r, ty) ->
-      Borrow (r, instance_type ~level ~tbl ~ktbl ty)
+    | T.Tuple args ->
+      let args = List.map (instance_type ~level ~tbl ~ktbl) args in
+      Tuple args
+    | T.Borrow (r, k, ty) ->
+      let k = instance_kind ~level ~ktbl k in
+      let ty = instance_type ~level ~tbl ~ktbl ty in
+      Borrow (r, k, ty)
     | T.Arrow(param_ty, k, return_ty) ->
       Arrow(instance_type ~level ~tbl ~ktbl param_ty,
             instance_kind ~level ~ktbl k,
@@ -244,57 +250,73 @@ end
 (** Generalization *)
 module Generalize = struct
 
-  let rec gen_kind ~level ~kenv = function
+  let neg = function `Pos -> `Neg | `Neg -> `Pos | `Invar -> `Invar
+  let merge_var pos orig_pos = match orig_pos, pos with
+    | None, (`Neg | `Pos | `Invar as pos) -> Some pos
+    | Some `Pos, `Pos
+    | Some `Neg, `Neg
+    | Some `Invar, _ -> orig_pos
+    | Some `Neg, `Pos
+    | Some `Pos, `Neg
+    | Some _, `Invar -> Some `Invar
+  let update_kind ~kenv ~pos k =
+    kenv := Kind.Map.update k (merge_var pos) !kenv
+  let update_type ~tyenv ~pos k =
+    tyenv := Name.Map.update k (merge_var pos) !tyenv
+  
+  let rec gen_kind ~level ~kenv ~pos = function
     | T.KVar {contents = KUnbound(id, other_level)} as k
       when other_level > level ->
-      kenv := Kind.S.add k !kenv ;
+      update_kind ~kenv ~pos k ;
       T.KGenericVar id
-    | T.KVar {contents = KLink ty} -> gen_kind ~level ~kenv ty
+    | T.KVar {contents = KLink ty} -> gen_kind ~level ~kenv ~pos ty
     | ( T.KGenericVar _
       | T.KVar {contents = KUnbound _}
       | T.Un _ | T.Aff _
       ) as ty -> ty
 
-  let rec gen_ty ~env ~level ~tyenv ~kenv = function
+  let rec gen_ty ~env ~level ~tyenv ~kenv ~pos = function
     | T.Var {contents = Unbound(id, other_level)} when other_level > level ->
-      tyenv := Name.Set.add id !tyenv ;
+      update_type ~tyenv ~pos id ;
       T.GenericVar id
     | T.App(ty, ty_args) ->
-      App(ty, List.map (gen_ty ~env ~level ~tyenv ~kenv) ty_args)
-    | T.Borrow (r, ty) ->
-      Borrow (r, gen_ty ~env ~level ~tyenv ~kenv ty)
+      App(ty, List.map (gen_ty ~env ~level ~tyenv ~kenv ~pos) ty_args)
+    | T.Tuple ty_args ->
+      Tuple (List.map (gen_ty ~env ~level ~tyenv ~kenv ~pos) ty_args)
+    | T.Borrow (r, k, ty) ->
+      Borrow (r, gen_kind ~level ~kenv ~pos k, gen_ty ~env ~level ~tyenv ~kenv ~pos ty)
     | T.Arrow(param_ty, k, return_ty) ->
-      Arrow(gen_ty ~env ~level ~tyenv ~kenv param_ty,
-            gen_kind ~level ~kenv k,
-            gen_ty ~env ~level ~tyenv ~kenv return_ty)
-    | T.Var {contents = Link ty} -> gen_ty ~env ~level ~tyenv ~kenv ty
+      Arrow(gen_ty ~env ~level ~tyenv ~kenv ~pos:(neg pos) param_ty,
+            gen_kind ~level ~kenv ~pos k,
+            gen_ty ~env ~level ~tyenv ~kenv ~pos return_ty)
+    | T.Var {contents = Link ty} -> gen_ty ~env ~level ~tyenv ~kenv ~pos ty
     | ( T.GenericVar _
       | T.Var {contents = Unbound _}
       ) as ty -> ty
 
-  let gen_kscheme ~level ~kenv = function
+  let gen_kscheme ~level ~kenv ~pos = function
     | {T. kvars = []; constr = []; args = [] ; kind } ->
-      gen_kind ~level ~kenv kind
+      gen_kind ~level ~kenv ~pos kind
     | ksch ->
       fail "Trying to generalize kinda %a. \
             This kind has already been generalized."
         Printer.kscheme ksch
 
   let gen_kschemes ~env ~level ~kenv tyset =
-    let get_kind (env : Env.t) id =
-      gen_kscheme ~level ~kenv (Env.find_ty id env)
+    let get_kind (env : Env.t) id pos =
+      gen_kscheme ~level ~kenv ~pos (Env.find_ty id env)
     in
-    Name.Set.fold (fun ty l -> (ty, get_kind env ty)::l) tyset []
+    Name.Map.fold (fun ty pos l -> (ty, get_kind env ty pos)::l) tyset []
 
   let rec gen_constraint ~level = function
     | [] -> Normal.ctrue, Normal.ctrue
     | (k1, k2) :: rest ->
-      let kenv = ref Kind.S.empty in
-      let k1 = gen_kind ~level ~kenv k1 in
-      let k2 = gen_kind ~level ~kenv k2 in
+      let kenv = ref Kind.Map.empty in
+      let k1 = gen_kind ~level ~kenv ~pos:`Pos k1 in
+      let k2 = gen_kind ~level ~kenv ~pos:`Pos k2 in
       let constr = Normal.cleq k1 k2 in
       let c1, c2 =
-        if Kind.S.is_empty !kenv
+        if Kind.Map.is_empty !kenv
         then constr, Normal.ctrue
         else Normal.ctrue, constr
       in
@@ -303,24 +325,21 @@ module Generalize = struct
 
   let collect_gen_vars ~kenv l =
     let add_if_gen = function
-      | T.KGenericVar _ as k -> kenv := Kind.S.add k !kenv
+      | T.KGenericVar _ as k ->
+        update_kind ~kenv ~pos:`Pos k
       | _ -> ()
     in
     List.iter (fun (k1, k2) -> add_if_gen k1; add_if_gen k2) l
 
-  let kinds_as_vars =
-    let f = function
-      | T.KGenericVar name -> name
-      | T.KVar { contents = T.KUnbound (name, _) } -> name
-      | _ -> assert false
-    in List.map f
+  let kinds_as_vars l =
+    Name.Set.elements @@ T.Free_vars.kinds l
   
   let typ ~env ~level constr ty =
-    let tyenv = ref Name.Set.empty in
-    let kenv = ref Kind.S.empty in
+    let tyenv = ref Name.Map.empty in
+    let kenv = ref Kind.Map.empty in
 
     (* We built the type skeleton and collect the kindschemes *)
-    let ty = gen_ty ~env ~level ~tyenv ~kenv ty in
+    let ty = gen_ty ~env ~level ~tyenv ~kenv ~pos:`Pos ty in
     let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
 
     (* We simplify the constraints using the set of kind variables *)
@@ -331,8 +350,8 @@ module Generalize = struct
     let constr_all = Normal.(constr_no_var @ constr) in
 
     collect_gen_vars ~kenv constr ;
-    let kvars = kinds_as_vars @@ Kind.S.elements !kenv in
-    let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
+    let kvars = kinds_as_vars @@ List.map fst @@ Kind.Map.bindings !kenv in
+    let env = Name.Map.fold (fun ty _ env -> Env.rm_ty ty env) !tyenv env in
 
     env, constr_all, T.tyscheme ~constr ~tyvars ~kvars ty
 
@@ -348,27 +367,35 @@ let generalize = Generalize.go
 
 let rec infer_kind ~level ~env = function
   | T.App (f, args) ->
-    let constrs, args =
-      List.fold_right
-        (fun ty (constrs, args) ->
-           let constr, k = infer_kind ~level ~env ty in
-           Normal.(constr @ constrs) , k::args)
-        args ([], [])
-    in
+    let constrs, args = infer_kind_many ~level ~env args in
     let constr', kind =
       Instantiate.go_kind level ~args @@ Env.find_constr f env
     in
     Normal.(constr' @ constrs), kind
+  | T.Tuple args ->
+    let constrs, args = infer_kind_many ~level ~env args in
+    let _, return_kind = T.kind ~name:"t" level in
+    let constr_tup =
+      Normal.cand @@ List.map (fun k -> Normal.cleq k return_kind) args
+    in
+    Normal.(constr_tup @ constrs), return_kind
   | T.Arrow (_, k, _) -> Normal.ctrue, k
   | T.GenericVar n -> Instantiate.go_kind level @@ Env.find_ty n env
   | T.Var { contents = T.Unbound (n, _) } ->
     Instantiate.go_kind level @@ Env.find_ty n env
   | T.Var { contents = T.Link ty } ->
     infer_kind ~level ~env ty
-  | T.Borrow (Read, _) ->
-    Normal.ctrue, T.Un (Region.Region level)
-  | T.Borrow (Write, _) ->
-    Normal.ctrue, T.Aff (Region.Region level)
+  | T.Borrow (Read, k, _) ->
+    Normal.ctrue, k
+  | T.Borrow (Write, k, _) ->
+    Normal.ctrue, k
+
+and infer_kind_many ~level ~env l = 
+  List.fold_right
+    (fun ty (constrs, args) ->
+       let constr, k = infer_kind ~level ~env ty in
+       Normal.(constr @ constrs) , k::args)
+    l ([], [])
 
 module Unif = struct
 
@@ -383,12 +410,13 @@ module Unif = struct
           fail "Recursive types"
         else
           other_tvar := Unbound(other_id, min tvar_level other_level)
-      | T.App(_ty, ty_arg) ->
-        List.iter f ty_arg
+      | T.App(_, ty_args)
+      | T.Tuple ty_args ->
+        List.iter f ty_args
       | T.Arrow(param_ty, _,return_ty) ->
         f param_ty ;
         f return_ty
-      | T.Borrow (_, ty) -> f ty
+      | T.Borrow (_, _, ty) -> f ty
     in
     f ty
 
@@ -398,16 +426,20 @@ module Unif = struct
     | T.App(ty1, ty_arg1), T.App(ty2, ty_arg2) when Name.equal ty1 ty2 ->
       Normal.cand (List.map2 (unify env) ty_arg1 ty_arg2)
 
-    | T.Borrow (r1, ty1), T.Borrow (r2, ty2) when r1 = r2 ->
-      unify env ty1 ty2
+    | T.Borrow (r1, k1, ty1), T.Borrow (r2, k2, ty2) when r1 = r2 ->
+      Normal.cand [
+        unify env ty1 ty2 ;
+        Kind.constr k1 k2 ;
+      ]
 
     | T.Arrow(param_ty1, k1, return_ty1), T.Arrow(param_ty2, k2, return_ty2) ->
       Normal.cand [
         Kind.constr k1 k2;
-        Kind.constr k2 k1;
         unify env param_ty2 param_ty1;
         unify env return_ty1 return_ty2;
       ]
+    | T.Tuple tys1, Tuple tys2 ->
+      List.flatten @@ List.map2 (unify env) tys1 tys2
 
     | T.Var {contents = Link ty1}, ty2 -> unify env ty1 ty2
     | ty1, T.Var {contents = Link ty2} -> unify env ty1 ty2
@@ -446,31 +478,12 @@ let normalize (env, constr, ty) = env, normalize_constr env [constr], ty
 module Multiplicity = struct
   type use =
     | Shadow
-    | Borrow of (T.Borrow.t * T.level)
+    | Borrow of (T.Borrow.t * T.kind list)
     | Normal of T.kind list
   type t = use Name.Map.t
   let empty = Name.Map.empty
   let var x k = Name.Map.singleton x (Normal [k])
-  let borrow x r level = Name.Map.singleton x (Borrow (r, level))
-
-  (* let borrow ~level r (e : t) =
-   *   let f u = match u with
-   *     | Shadow -> Shadow
-   *     | Borrow _ -> u (\* TODO: make sure this is ok *\)
-   *     | Normal _ -> Borrow (r, level)
-   *   in
-   *   Name.Map.map f e *)
-
-  (* let classify l =
-   *   let aux acc l = match acc, l with
-   *     | `Nothing, Borrow (r,l) -> `Borrow (r,[l])
-   *     | `Nothing, Normal k -> `Normal [k]
-   *     | `Borrow (r0, l0), Borrow (r, l) -> `Borrow (T.Borrow.max r0 r, l :: l0)
-   *     | `Normal l, Normal k -> `Normal (k :: l)
-   *     | `Borrow (_, _), Normal k -> `Normal [Kind.un; k]
-   *     | `Normal l, Borrow (_, _) -> `Normal (Kind.un :: l)
-   *   in
-   *   List.fold_left aux `Nothing l *)
+  let borrow x r k = Name.Map.singleton x (Borrow (r, [k]))
 
   exception Fail of use * use
   let fail u1 u2 = raise (Fail (u1, u2))
@@ -486,9 +499,9 @@ module Multiplicity = struct
     in
     let aux _x u1 u2 = match u1, u2 with
       | Shadow, u -> Some u
-      | Borrow (r1, level1), Borrow (r2, level2) ->
+      | Borrow (r1, k1), Borrow (r2, k2) ->
         if T.Borrow.equal r1 r2 then
-          Some (Borrow (r1, min level1 level2))
+          Some (Borrow (r1, k1@k2))
         else
           fail u1 u2
       | Normal l1, Normal l2 ->
@@ -541,19 +554,21 @@ let constant_scheme = let open T in function
     | Get ->
       let name, a = T.gen_var () in
       let kname, k = T.gen_kind_var () in
+      let kname_borrow, k_borrow = T.gen_kind_var () in
       tyscheme
-        ~kvars:[kname]
+        ~kvars:[kname; kname_borrow]
         ~tyvars:[name, k]
         ~constr:[(k, T.Un Never)]
-        Builtin.(Borrow (Read, array a) @-> a )
+        Builtin.(Tuple [Borrow (Read, k_borrow, array a); int] @-> a )
     | Set ->
       let name, a = T.gen_var () in
       let kname, k = T.gen_kind_var () in
+      let kname_borrow, k_borrow = T.gen_kind_var () in
       tyscheme
-        ~kvars:[kname]
+        ~kvars:[kname; kname_borrow]
         ~tyvars:[name, k]
         ~constr:[(k, T.Aff Never)]
-        Builtin.(Borrow (Write, array a) @-> a @-> unit_ty)
+        Builtin.(Tuple [Borrow (Write, k_borrow, array a); int; a] @-> unit_ty)
     | Y ->
       let name, a = T.gen_var () in
       tyscheme ~tyvars:[name, Kind.un] Builtin.((a @-> a) @-> a)
@@ -596,7 +611,28 @@ let rec infer (env : Env.t) level = function
     in
     Multiplicity.drop mults param, env, constr,
     T.Arrow (param_ty, arrow_k, return_ty)
-  | Array elems -> infer_array env level elems 
+  | Array elems -> 
+    with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
+    let mults, env, constrs, tys = 
+      infer_many env level Multiplicity.empty elems
+    in 
+    let f elem_ty = C.(elem_ty === array_ty) in
+    let elem_constr = CCList.map f tys in
+    let constr = normalize_constr env [
+        constrs ;
+        C.cand elem_constr ;
+      ]
+    in
+    mults, env, constr, Builtin.array array_ty
+  | Tuple elems -> 
+    let mults, env, constrs, tys =
+      infer_many env level Multiplicity.empty elems
+    in
+    let constr = normalize_constr env [
+        constrs ;
+      ]
+    in
+    mults, env, constr, T.Tuple tys
   | Constructor name ->
     let env, constr1, t = instantiate level env @@ Env.find name env in
     let constr2, k = infer_kind ~level ~env t in
@@ -609,9 +645,10 @@ let rec infer (env : Env.t) level = function
     Multiplicity.var name k, env, constr, ty
 
   | Borrow (r, name) ->
+    let _, borrow_k = T.kind ~name:"b" level in
     let (name, _), env, constr, borrow_ty = infer_var env level name in
-    let mults = Multiplicity.borrow name r level in
-    mults, env, constr, T.Borrow (r, borrow_ty)
+    let mults = Multiplicity.borrow name r borrow_k in
+    mults, env, constr, T.Borrow (r, borrow_k, borrow_ty)
 
   | Let(var_name, value_expr, body_expr) ->
     let mults1, env, var_constr, var_ty =
@@ -642,7 +679,7 @@ let rec infer (env : Env.t) level = function
       | _ -> assert false
     in
     let constr = normalize_constr env [
-        C.(expr_ty === output_ty) ;
+         C.(expr_ty === output_ty) ;
         C.denormal expr_constr ;
         C.denormal constructor_constr ;
       ]
@@ -715,23 +752,6 @@ and infer_app (env : Env.t) level fn_expr args =
   in
   mults, env, constr, return_ty
 
-and infer_array (env : Env.t) level args =
-  with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
-  let f env elem_ty =
-    let constr = C.(elem_ty === array_ty) in
-    env, constr
-  in
-  let mults, env, constrs, tys =
-    infer_many env level Multiplicity.empty args
-  in
-  let env, elem_constr = CCList.fold_map f env tys in
-  let constr = normalize_constr env [
-      constrs ;
-      C.cand elem_constr ;
-    ]
-  in
-  mults, env, constr, Builtin.array array_ty
-
 let infer_top env0 e =
   let _, env, constr, ty = infer env0 1 e in
   let env, constr, scheme = generalize env 0 constr ty e in
@@ -742,9 +762,9 @@ let infer_top env0 e =
   (* Remove unused variables in the environment *)
   let free_vars =
     Name.Map.fold
-      (fun _ sch e -> Name.Set.union e @@ T.free_vars_scheme sch)
+      (fun _ sch e -> Name.Set.union e @@ T.Free_vars.scheme sch)
       env.vars
-      (T.free_vars_scheme scheme)
+      (T.Free_vars.scheme scheme)
   in
   let env = Env.filter_ty (fun n _ -> Name.Set.mem n free_vars) env in
 

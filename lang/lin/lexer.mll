@@ -15,8 +15,9 @@ rule token = parse
   | "alloc" { ALLOC }
   | "free" { FREE }
   | ">" { GREATER }
+  | "." { DOT }
   | "->" { RIGHTARROW }
-  | "<-" { RIGHTARROW }
+  | "<-" { LEFTARROW }
   | "-{" { DASHLACCO }
   | "<" { LESS }
   | "&!" { ANDBANG }
@@ -28,8 +29,6 @@ rule token = parse
   | '}'	{ RACCO }
   | "[|"	{ LBRACKPIPE }
   | "|]"	{ PIPERBRACK }
-  | "["	{ LBRACK }
-  | "]"	{ RBRACK }
   | "type" { TYPE }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }

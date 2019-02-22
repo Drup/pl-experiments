@@ -23,6 +23,15 @@ let unit_ty = App (unit_name, [])
 let unit_kind = kscheme un
 let unit = Syntax.Constructor (Name.create ~name:"()" ())
 
+(* let mk_tuple n =
+ *   let name = Name.create ~name:("tup"^ string_of_int n) () in
+ *   let ty l = App (name, l) in
+ *   let kind =
+ *     let name, k = gen_kind_var () in
+ *     kscheme ~kvars:[name] ~args:(List.init n (fun _ -> k)) k
+ *   in
+ *   name, ty, kind *)
+
 let initial_env =
   Env.empty
   |> Env.add_constr array_name array_kind

@@ -46,7 +46,8 @@ type typ =
   | Arrow : typ * kind * typ -> typ
   | GenericVar : Name.t -> typ
   | Var : uvar ref -> typ
-  | Borrow : Borrow.t * typ -> typ
+  | Borrow : Borrow.t * kind * typ -> typ
+  | Tuple of typ list
 
 and uvar =
   | Unbound of Name.t * level
@@ -91,14 +92,64 @@ let kscheme ?(constr=[]) ?(kvars=[]) ?(args=[]) kind =
   { constr ; kvars ; args ; kind }
 
 
-let rec free_vars = function
-  | App (_, l) ->
-    List.fold_left (fun s e -> Name.Set.union s @@ free_vars e) Name.Set.empty l
-  | Arrow (ty1, _, ty2) -> Name.Set.union (free_vars ty1) (free_vars ty2)
-  | GenericVar n -> Name.Set.singleton n
-  | Var { contents = Link t } -> free_vars t
-  | Var { contents = Unbound (n, _) } -> Name.Set.singleton n
-  | Borrow (_, t) -> free_vars t
+module Fold = struct
+  
+  let (++) = Name.Set.union
 
-let free_vars_scheme { tyvars ; ty ; _ } =
-  Name.Set.diff (free_vars ty) (Name.Set.of_list @@ List.map fst tyvars) 
+  let rec kind (++) z = function
+    | KGenericVar n -> (`Kind n) ++ z
+    | KVar { contents = KLink t } -> kind (++) z t
+    | KVar { contents = KUnbound (n, _) } -> (`Kind n) ++ z
+    | Un _ | Aff _ -> z
+
+  let kinds (++) z l =
+    List.fold_left
+      (fun e k -> kind (++) e k)
+      z l
+
+  let constrs (++) z l =
+    List.fold_left
+      (fun z (k1, k2) -> kind (++) (kind (++) z k1) k2)
+      z l
+
+  let rec types (++) z = function
+    | GenericVar n ->
+      `Ty n ++ z
+    | Var { contents = Link t } ->
+      types (++) z t
+    | Var { contents = Unbound (n, _) } ->
+      `Ty n ++ z
+    | App (_, args) ->
+      List.fold_left (fun x t ->
+          types (++) x t
+        ) z args
+    | Arrow (ty1, k, ty2) ->
+      types (++) ( kind (++) (types (++) z ty2) k) ty1
+    | Tuple tys ->
+      let aux x ty = types (++) x ty in
+      List.fold_left aux z tys
+    | Borrow (_, k, t) ->
+      kind (++) (types (++) z t) k 
+
+  let scheme (++) z { tyvars ; ty ; _ } =
+    let fv, _ = types (++) z ty in
+    Name.Set.diff fv (Name.Set.of_list @@ List.map fst tyvars)
+
+end
+
+module Free_vars = struct
+
+  let fv_zero = Name.Set.empty
+  let fv_red x kfv = match x with
+    | `Kind x -> Name.Set.add x kfv
+  let kind k = Fold.kind fv_red fv_zero k
+  let kinds ks = Fold.kinds fv_red fv_zero ks
+  let constrs c = Fold.constrs fv_red fv_zero c
+
+  let fv_zero = (Name.Set.empty, Name.Set.empty)
+  let fv_red x (fv, kfv) = match x with
+    | `Ty x -> Name.Set.add x fv, kfv
+    | `Kind x -> fv, Name.Set.add x kfv
+  let types ty = Fold.types fv_red fv_zero ty
+  let scheme s = Fold.scheme fv_red fv_zero s
+end

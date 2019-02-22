@@ -95,10 +95,10 @@ struct
 
     let load () = ignore (LNoise.history_load ~filename)
 
-    let res = function Ok x -> x | Error s -> error "%s" s
+    (* let res = function Ok x -> x | Error s -> error "%s" s *)
     let add s =
-      LNoise.history_add s |> res ;
-      LNoise.history_save ~filename |> res ;
+      LNoise.history_add s |> ignore ;
+      LNoise.history_save ~filename |> ignore ;
   end
     
 
@@ -234,6 +234,7 @@ struct
     (* Set the maximum depth of pretty-printing, after which it prints ellipsis. *)
     Format.set_max_boxes 42 ;
     Format.set_ellipsis_text "..." ;
+    Format.set_margin 80 ;
     try
       (* Run and load all the specified files. *)
       let ctx = List.fold_left use_file L.initial_environment !files in

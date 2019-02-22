@@ -62,6 +62,8 @@ let rec expr
         expr e
     | Array a ->
       Format.fprintf fmt "@[[|@ %a@ |]@]" Fmt.(list ~sep:(unit ";@ ") expr) a
+    | Tuple a ->
+      Format.fprintf fmt "@[(@ %a@ )@]" Fmt.(list ~sep:(unit ",@ ") expr) a
     | App (Constant Plus, [e1; e2]) ->
       Format.fprintf fmt "@[<2>@[%a@]@ + @[%a@]@]"
         expr_with_paren e1
@@ -95,6 +97,7 @@ and expr_with_paren fmt x =
       -> true
     | Constant _
     | Array _
+    | Tuple _
     | Constructor _
     | Var _
     | Borrow (_, _)
@@ -143,8 +146,12 @@ and typ
   = fun fmt -> function
   | T.App (f,[]) ->
     name fmt f
-  | T.Borrow (r, t) ->
-    Format.fprintf fmt "&%s%a" (borrow r) typ_with_paren t
+  | T.Borrow (r, k, t) ->
+    Format.fprintf fmt "&%s(%a,%a)" (borrow r) kind k typ t
+  | T.Tuple l ->
+    let pp_sep fmt () = Format.fprintf fmt " *@ " in
+    Format.fprintf fmt "@[<2>%a@]"
+      (Format.pp_print_list ~pp_sep typ) l
   | T.App (f,e) ->
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
@@ -188,22 +195,22 @@ let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
   ()
 
 and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
-  let pp_sep fmt () = Format.fprintf fmt "," in
+  let pp_sep fmt () = Format.fprintf fmt ",@ " in
   let binding fmt (ty,k) =
     Format.fprintf fmt "(%a:%a)" (tyname ~unbound:false) ty kind k
   in
-  Format.pp_open_box fmt 2 ;
+  Format.pp_open_box fmt 0 ;
   begin
     if kvars <> [] || tyvars <> [] then
-      Format.fprintf fmt "∀%a%a. "
+      Format.fprintf fmt "∀@[%a,@ %a@].@ "
         Format.(pp_print_list ~pp_sep (kname ~unbound:false)) kvars
         Format.(pp_print_list ~pp_sep binding) tyvars
   end;
   begin
     if c <> [] then
-      Format.fprintf fmt "%a =>@ " constrs c
+      Format.fprintf fmt "@[%a@] =>@ " constrs c
   end;
-  typ fmt ty;
+  Fmt.box typ fmt ty;
   Format.pp_close_box fmt ();
   ()
 

@@ -20,6 +20,7 @@ type expr =
   | Let of Name.t * expr * expr
   | Match of Name.t * Name.t * expr * expr
   | Region of expr
+  | Tuple of expr list
 
 type decl = {
   name : Name.t ;
@@ -36,7 +37,7 @@ module Ty = struct
     | App of Name.t * typ list
     | Arrow of typ * kind * typ
     | Var of Name.t
-    | Borrow of borrow * typ
+    | Borrow of borrow * kind * typ
   
   type constraints = (kind * kind) list
 
@@ -81,6 +82,7 @@ module Rename = struct
     | Constructor ({name}) -> Constructor (find name env)
     | Constant _ as e -> e
     | Array l  -> Array (List.map (expr env) l)
+    | Tuple l  -> Tuple (List.map (expr env) l)
     | Region e -> Region (expr env e)
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
@@ -113,8 +115,8 @@ module Rename = struct
       Ty.App (find name tyenv, List.map (type_expr ~kenv ~tyenv ~venv) args)
     | Ty.Var {name} ->
       Ty.Var (find name venv)
-    | Ty.Borrow (r, ty) ->
-      Ty.Borrow (r, type_expr ~kenv ~tyenv ~venv ty)
+    | Ty.Borrow (r, k, ty) ->
+      Ty.Borrow (r, kind ~kenv k, type_expr ~kenv ~tyenv ~venv ty)
 
 
   let add_kind ~kenv = function

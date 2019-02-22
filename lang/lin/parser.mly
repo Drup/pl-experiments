@@ -8,6 +8,8 @@ let mk_let name args e1 e2 =
 let mk_def name args e =
   let expr = match args with [] -> e | l -> mk_lambda l e in
   Def {name; expr}
+let mk_get a i = App (Constant Get, [Tuple [a;i]])
+let mk_set a i x = App (Constant Set, [Tuple [a;i;x]])
 %}
 
 %token EOF SEMISEMI
@@ -21,7 +23,6 @@ let mk_def name args e =
 %token EQUAL PLUS
 %token LPAREN RPAREN
 %token LACCO RACCO
-%token LBRACK RBRACK
 %token LBRACKPIPE PIPERBRACK
 %token LET IN
 %token SEMI
@@ -74,8 +75,8 @@ expr:
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
   | FUN l=list(name) RIGHTARROW body=expr
     { mk_lambda l body }
-  | s=simple_expr DOT LBRACK i=expr RBRACK LEFTARROW e=expr
-    { App (Constant Set, [s; i; e]) }
+  | s=simple_expr DOT LPAREN i=expr RPAREN LEFTARROW e=expr
+    { mk_set s i e }
 
 simple_expr:
   | c=constant { Constant c }
@@ -87,7 +88,7 @@ simple_expr:
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | AND name=name { Borrow (Read, name) }
   | ANDBANG name=name { Borrow (Write, name) }
-  | s=simple_expr DOT LBRACK i=expr RBRACK { App (Constant Get, [s; i]) }
+  | s=simple_expr DOT LPAREN i=expr RPAREN { mk_get s i }
 
 
 list_expr:
