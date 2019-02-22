@@ -173,8 +173,8 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       | Some variance_map ->
         let p (v1, v2) =
           match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
-          | Some `Neg, _ when G.out_degree g0 v1 = 1 -> true
-          | _, Some `Pos when G.in_degree g0 v2 = 1 -> true
+          | Some Variance.(Neg | Bivar), _ when G.out_degree g0 v1 = 1 -> true
+          | _, Some Variance.(Pos | Bivar) when G.in_degree g0 v2 = 1 -> true
           | _ -> false
         in
         let unif ks = K.unify @@ Set.elements ks in
@@ -194,7 +194,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       |> O.transitive_closure
       |> edges
       |> unused_variables keep_vars
-      (* |> simplify_with_position keep_vars *)
+      |> simplify_with_position keep_vars
       |> bounds
       |> O.transitive_reduction ~reflexive:true
   end

@@ -247,6 +247,83 @@ module Kind = struct
   let first_class k = C.(k <= T.Aff Global)
 end
 
+module Simplification = struct
+  open Variance
+
+  module PosMap = struct
+    type bimap = { ty : Variance.Map.t ; kind : variance Kind.Map.t }
+    let empty = { ty = Variance.Map.empty ; kind = Kind.Map.empty }
+    let add_ty m ty v =
+      { m with ty = Variance.Map.add m.ty ty v }
+    let add_kind m k v =
+      let add m k v =
+        Kind.Map.update
+          k (function None -> Some v | Some v' -> Some (merge v v')) m
+      in { m with kind = add m.kind k v }
+    let add_kinds m k v =
+      let f m set var =
+        Kind.Set.fold (fun name m -> Kind.Map.add name var m) set m
+      in { m with kind = f m.kind k v }
+  end
+
+  let rec collect_kind ~level ~map ~variance = function
+    | T.KVar {contents = KUnbound(_, other_level)} as k
+      when other_level > level ->
+      PosMap.add_kind map k variance
+    | T.KVar {contents = KLink ty} -> collect_kind ~level ~map ~variance ty
+    | ( T.KGenericVar _
+      | T.KVar {contents = KUnbound _}
+      | T.Un _ | T.Aff _
+      ) -> map
+  
+  let rec collect_types ~level ~map ~variance = function
+    | T.GenericVar _ -> map
+    | T.Var { contents = Link t } ->
+      collect_types ~level ~variance ~map t
+    | T.Var {contents = Unbound(name, other_level)} ->
+      if other_level > level
+      then PosMap.add_ty map name variance
+      else map
+    | T.App (_, args) ->
+      (* TOFIX : This assumes that constructors are covariant. This is wrong *)
+      List.fold_left (fun map t ->
+          collect_types ~level ~map ~variance t
+        ) map args
+    | T.Arrow (ty1, k, ty2) ->
+      let map = collect_types ~level ~map ~variance:(neg variance) ty1 in
+      let map = collect_kind ~level ~map ~variance k in
+      let map = collect_types ~level ~map ~variance ty2 in
+      map
+    | T.Tuple tys ->
+      let aux map ty = collect_types ~level ~map ~variance ty in
+      List.fold_left aux map tys
+    | T.Borrow (_, k, ty) ->
+      let map = collect_types ~level ~variance  ~map ty in
+      let map = collect_kind ~level ~map ~variance k in
+      map
+
+  
+  let collect_kscheme ~level ~map ~variance = function
+    | {T. kvars = []; constr = []; args = [] ; kind } ->
+      collect_kind ~level ~map ~variance kind
+    | ksch ->
+      fail "Trying to generalize kinda %a. \
+            This kind has already been generalized."
+        Printer.kscheme ksch
+
+  let collect_kschemes ~env ~level map =
+    Name.Map.fold
+      (fun ty variance map -> 
+         collect_kscheme ~level ~map ~variance (Env.find_ty ty env))
+      map.PosMap.ty map
+
+  let go ~env ~level constr ty =
+    let map = PosMap.empty in
+    let map = collect_types ~map ~level ~variance:Pos ty in
+    let map = collect_kschemes ~env ~level map in
+    Kind.simplify ~keep_vars:map.kind constr
+end
+
 (** Generalization *)
 module Generalize = struct
 
@@ -335,15 +412,14 @@ module Generalize = struct
     Name.Set.elements @@ T.Free_vars.kinds l
   
   let typ ~env ~level constr ty =
+    let constr = Simplification.go ~env ~level constr ty in
+
     let tyenv = ref Name.Map.empty in
     let kenv = ref Kind.Map.empty in
 
     (* We built the type skeleton and collect the kindschemes *)
     let ty = gen_ty ~env ~level ~tyenv ~kenv ~pos:`Pos ty in
     let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
-
-    (* We simplify the constraints using the set of kind variables *)
-    let constr = Kind.simplify ~keep_vars:!kenv constr in
 
     (* Split the constraints that are actually generalized *)
     let constr_no_var, constr = gen_constraint ~level constr in
