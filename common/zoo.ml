@@ -24,7 +24,7 @@ let error ?(kind="Error") ?(loc=Nowhere) =
     let msg = Format.flush_str_formatter () in
       raise (Error (loc, kind, msg))
   in
-    Format.kfprintf k Format.str_formatter
+  Format.kfprintf k Format.str_formatter
 
 let print_parens ?(max_level=9999) ?(at_level=0) ppf =
   if max_level < at_level then
@@ -90,6 +90,18 @@ end
 module Main (L : LANGUAGE) =
 struct
 
+  module History = struct
+    let filename = Sys.getenv "HOME" ^ "/." ^ L.name ^ ".history"
+
+    let load () = ignore (LNoise.history_load ~filename)
+
+    let res = function Ok x -> x | Error s -> error "%s" s
+    let add s =
+      LNoise.history_add s |> res ;
+      LNoise.history_save ~filename |> res ;
+  end
+    
+
   (** Should the interactive shell be run? *)
   let interactive_shell = ref true
 
@@ -151,12 +163,12 @@ struct
     match LNoise.linenoise prompt with
     | None -> exit 0
     | Some s0 ->
-      LNoise.history_add s0 |> ignore ;
+      History.add s0;
       let rec aux acc =
         if L.read_more acc then match LNoise.linenoise prompt_more with
           | None -> exit 0
           | Some s ->
-            LNoise.history_add s |> ignore ;
+            History.add s;
             aux (acc ^ s)
         else begin
           parser @@ Lexing.from_string (acc ^ "\n")
@@ -212,6 +224,7 @@ struct
   (** Main program *)
   let main () =
     LNoise.set_multiline true;
+    History.load () ;
     (* Intercept Ctrl-C by the user *)
     LNoise.catch_break true;
     (* Parse the arguments. *)
