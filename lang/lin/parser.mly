@@ -1,5 +1,13 @@
 %{
 open Syntax
+
+let mk_lambda l body = List.fold_right (fun n e -> Lambda (n, e)) l body
+let mk_let name args e1 e2 =
+  let e1 = match args with [] -> e1 | l -> mk_lambda l e1 in
+  Let (name, e1, e2)
+let mk_def name args e =
+  let expr = match args with [] -> e | l -> mk_lambda l e in
+  Def {name; expr}
 %}
 
 %token EOF SEMISEMI
@@ -9,16 +17,18 @@ open Syntax
 %token <string> UIDENT
 %token <int> INT
 %token UN AFF
+%token DOT
 %token EQUAL PLUS
 %token LPAREN RPAREN
 %token LACCO RACCO
+%token LBRACK RBRACK
 %token LBRACKPIPE PIPERBRACK
 %token LET IN
 %token SEMI
 %token TYPE
-%token RIGHTARROW FUN BIGRIGHTARROW
+%token ALLOC FREE
+%token RIGHTARROW LEFTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
-%token REF BANG COLONEQUAL
 %token LESS GREATER
 %token DASHLACCO RACCOGREATER
 %token AND
@@ -26,11 +36,15 @@ open Syntax
 
 
 %nonassoc IN
+%nonassoc LEFTARROW
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
-%left FUNAPP
+/* %left FUNAPP */
 %left PLUS
-%nonassoc AND ANDBANG INT IDENT UIDENT LPAREN LACCO LBRACKPIPE YTOK REF BANG COLONEQUAL
+/* %nonassoc below_DOT */
+/* %nonassoc DOT */
+%nonassoc
+  /* AND ANDBANG INT */ IDENT /* UIDENT LPAREN LACCO LBRACKPIPE YTOK ALLOC */
 
 %start file
 %type <Syntax.command list> file
@@ -43,21 +57,27 @@ file: list(command) EOF { $1 }
 toplevel: command SEMISEMI { $1 }
 
 command:
-  | LET name=name EQUAL expr=expr { Def {name; expr} }
+  | LET name=name args=list(name) EQUAL expr=expr
+    { mk_def name args expr }
   | TYPE params=type_var_bindings name=name EQUAL constructor=uname OF e=type_expr_with_constraint
     { Type {name; params; constructor ; constraints = fst e ; typ = snd e} }
 
 expr:
-  | e=simple_expr %prec FUN { e }
-  | f=simple_expr l=list_expr %prec FUNAPP
+  | e=simple_expr /* %prec below_DOT */
+    { e }
+  | f=simple_expr l=list_expr /* %prec FUNAPP */
      { App (f,List.rev l) }
   | e1=expr PLUS e2=expr
     { App (Constant Plus, [e1;e2]) }
-  | LET name=name EQUAL e1=expr IN e2=expr { Let (name, e1, e2) }
+  | LET name=name args=list(name) EQUAL e1=expr IN e2=expr
+    { mk_let name args e1 e2 }
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
+  | FUN l=list(name) RIGHTARROW body=expr
+    { mk_lambda l body }
+  | s=simple_expr DOT LBRACK i=expr RBRACK LEFTARROW e=expr
+    { App (Constant Set, [s; i; e]) }
 
 simple_expr:
-  | FUN name=name RIGHTARROW e=expr { Lambda (name, e) }
   | c=constant { Constant c }
   | name=uname { Constructor (name) }
   | name=name { Var name }
@@ -67,6 +87,7 @@ simple_expr:
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | AND name=name { Borrow (Read, name) }
   | ANDBANG name=name { Borrow (Write, name) }
+  | s=simple_expr DOT LBRACK i=expr RBRACK { App (Constant Get, [s; i]) }
 
 
 list_expr:
@@ -75,9 +96,8 @@ list_expr:
 
 constant:
   | i=INT { Int i }
-  | REF { Alloc }
-  | BANG { Get }
-  | COLONEQUAL { Set }
+  | ALLOC { Alloc }
+  | FREE { Free }
   | YTOK { Y }
 
 name:

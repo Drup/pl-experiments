@@ -23,6 +23,9 @@ type region = Region.t
 
 module Borrow = struct
   type t = Syntax.borrow = Read | Write
+  let equal b1 b2 = match b1, b2 with
+    | Read, Read | Write, Write -> true
+    | Read, Write | Write, Read -> false
   let max a b = match a, b with
     | Read, Read -> Read
     | Write, _ | _, Write -> Write

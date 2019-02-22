@@ -12,13 +12,13 @@ rule token = parse
   | "in" { IN }
   | "=" { EQUAL }
   | "fun" { FUN }
-  | "ref" { REF }
-  | "!" { BANG }
-  | ":=" { COLONEQUAL }
+  | "alloc" { ALLOC }
+  | "free" { FREE }
+  | ">" { GREATER }
   | "->" { RIGHTARROW }
+  | "<-" { RIGHTARROW }
   | "-{" { DASHLACCO }
   | "<" { LESS }
-  | ">" { GREATER }
   | "&!" { ANDBANG }
   | "&" { AND }
   | "}>" { RACCOGREATER }
@@ -28,6 +28,8 @@ rule token = parse
   | '}'	{ RACCO }
   | "[|"	{ LBRACKPIPE }
   | "|]"	{ PIPERBRACK }
+  | "["	{ LBRACK }
+  | "]"	{ RBRACK }
   | "type" { TYPE }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
