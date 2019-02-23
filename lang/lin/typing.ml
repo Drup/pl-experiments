@@ -631,34 +631,11 @@ end
 
 let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int
-    | Plus  -> tyscheme Builtin.(int @-> int @-> int)
-    | Alloc ->
-      let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kind.un] Builtin.(a @-> array a)
-    | Free -> 
-      let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kind.un] Builtin.(array a @-> unit_ty)
-    | Get ->
-      let name, a = T.gen_var () in
-      let kname, k = T.gen_kind_var () in
-      let kname_borrow, k_borrow = T.gen_kind_var () in
-      tyscheme
-        ~kvars:[kname; kname_borrow]
-        ~tyvars:[name, k]
-        ~constr:[(k, T.Un Never)]
-        Builtin.(Tuple [Borrow (Read, k_borrow, array a); int] @-> a )
-    | Set ->
-      let name, a = T.gen_var () in
-      let kname, k = T.gen_kind_var () in
-      let kname_borrow, k_borrow = T.gen_kind_var () in
-      tyscheme
-        ~kvars:[kname; kname_borrow]
-        ~tyvars:[name, k]
-        ~constr:[(k, T.Aff Never)]
-        Builtin.(Tuple [Borrow (Write, k_borrow, array a); int; a] @-> unit_ty)
     | Y ->
       let name, a = T.gen_var () in
       tyscheme ~tyvars:[name, Kind.un] Builtin.((a @-> a) @-> a)
+    | Primitive s ->
+      Builtin.(PrimMap.find s primitives)
 
 let constant level env c =
   let e, constr, ty =

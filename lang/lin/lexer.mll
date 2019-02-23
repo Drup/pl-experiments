@@ -12,8 +12,7 @@ rule token = parse
   | "in" { IN }
   | "=" { EQUAL }
   | "fun" { FUN }
-  | "alloc" { ALLOC }
-  | "free" { FREE }
+  | "%" { PERCENT }
   | ">" { GREATER }
   | "." { DOT }
   | "->" { RIGHTARROW }
@@ -32,9 +31,6 @@ rule token = parse
   | "type" { TYPE }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
-  | "'" ([ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
-  | ([ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
-  | ([ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }
   | ":" { DOUBLECOLON }
   | "," { COMMA }
   | "un" { UN }
@@ -42,3 +38,6 @@ rule token = parse
   | ';' { SEMI }
   | ";;"	{ SEMISEMI }
   | eof	{ EOF }
+  | "'" ([ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
+  | ([ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
+  | ([ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }

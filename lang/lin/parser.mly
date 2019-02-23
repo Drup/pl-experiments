@@ -8,8 +8,9 @@ let mk_let name args e1 e2 =
 let mk_def name args e =
   let expr = match args with [] -> e | l -> mk_lambda l e in
   Def {name; expr}
-let mk_get a i = App (Constant Get, [Tuple [a;i]])
-let mk_set a i x = App (Constant Set, [Tuple [a;i;x]])
+let mk_plus a b = App (Constant (Primitive "plus"), [a;b])
+let mk_get a i = App (Constant (Primitive "get"), [Tuple [a;i]])
+let mk_set a i x = App (Constant (Primitive "set"), [Tuple [a;i;x]])
 %}
 
 %token EOF SEMISEMI
@@ -27,12 +28,12 @@ let mk_set a i x = App (Constant Set, [Tuple [a;i;x]])
 %token LET IN
 %token SEMI
 %token TYPE
-%token ALLOC FREE
 %token RIGHTARROW LEFTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
 %token LESS GREATER
 %token DASHLACCO RACCOGREATER
 %token AND
+%token PERCENT
 %token ANDBANG
 
 
@@ -60,8 +61,11 @@ toplevel: command SEMISEMI { $1 }
 command:
   | LET name=name args=list(name) EQUAL expr=expr
     { mk_def name args expr }
-  | TYPE params=type_var_bindings name=name EQUAL constructor=uname OF e=type_expr_with_constraint
-    { Type {name; params; constructor ; constraints = fst e ; typ = snd e} }
+  | TYPE
+      params=type_var_bindings name=name ret_kind=opt_kind_annot EQUAL
+      constructor=uname OF e=type_expr_with_constraint
+    { let constraints, typ = e in
+      Type {name; params; constructor ; constraints ; typ ; ret_kind} }
 
 expr:
   | e=simple_expr /* %prec below_DOT */
@@ -69,7 +73,7 @@ expr:
   | f=simple_expr l=list_expr /* %prec FUNAPP */
      { App (f,List.rev l) }
   | e1=expr PLUS e2=expr
-    { App (Constant Plus, [e1;e2]) }
+    { mk_plus e1 e2 }
   | LET name=name args=list(name) EQUAL e1=expr IN e2=expr
     { mk_let name args e1 e2 }
   | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
@@ -83,7 +87,11 @@ simple_expr:
   | name=uname { Constructor (name) }
   | name=name { Var name }
   | LPAREN RPAREN { Builtin.unit }
-  | LPAREN e=expr RPAREN { e }
+  | LPAREN l=separated_nonempty_list(COMMA,expr) RPAREN
+    { match l with
+      | [e] -> e
+      | l -> Tuple l
+    }
   | LACCO e=expr RACCO { Region e }
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | AND name=name { Borrow (Read, name) }
@@ -97,8 +105,7 @@ list_expr:
 
 constant:
   | i=INT { Int i }
-  | ALLOC { Alloc }
-  | FREE { Free }
+  | PERCENT s=IDENT { Primitive s }
   | YTOK { Y }
 
 name:
@@ -134,6 +141,10 @@ simple_type_expr_no_paren:
 %inline arrow:
   | RIGHTARROW { Ty.Un }
   | DASHLACCO k=kind_expr RACCOGREATER { k }
+
+opt_kind_annot:
+  | { None }
+  | DOUBLECOLON k=kind_expr { Some k }
 
 kind_expr:
   | n=kind_var { Ty.KVar n }
