@@ -42,7 +42,7 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
     
   let kschm =
     let kvars = FV.kind k +++ FV.kinds kargs in
-    let constr = Typing.Kind.simplify constr in
+    let constr = Typing.Kind.solve constr in
     let kvars = FV.constrs constr +++ kvars in
     Types.kscheme ~constr ~kvars:(Name.Set.elements kvars) ~args:kargs k
   in
@@ -54,7 +54,7 @@ let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
     let tyvars, kvars = FV.types ty in
     assert Name.Set.(subset tyvars @@ of_list @@ List.map fst tyargs) ;
     let kvars = FV.kinds kargs +++ kvars in
-    let constr = Typing.Kind.simplify constr in
+    let constr = Typing.Kind.solve constr in
     Types.tyscheme ~constr ~tyvars:tyargs ~kvars:(Name.Set.elements kvars) ty
   in
   (name, kschm, constructor, tyschm)

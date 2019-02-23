@@ -132,8 +132,6 @@ module Kind = struct
 
   exception Fail of T.kind * T.kind
 
-  let did_unify_kind = ref false
-
   let adjust_levels tvar_id tvar_level kind =
     let rec f : T.kind -> _ = function
       | T.KVar {contents = T.KLink k} -> f k
@@ -167,7 +165,6 @@ module Kind = struct
     | ty, T.KVar ({contents = KUnbound (id, level)} as tvar) ->
       adjust_levels id level ty ;
       tvar := KLink ty ;
-      did_unify_kind := true ;
       ()
 
     | _, T.KGenericVar _ | T.KGenericVar _, _ ->
@@ -178,6 +175,10 @@ module Kind = struct
       (T.Aff _ | T.Un _)
       -> raise (Fail (k1, k2))
 
+  (* let unify k1 k2 =
+   *   Format.eprintf "Unifying %a and %a@." Printer.kind k1 Printer.kind k2 ;
+   *   unify k1 k2 *)
+  
   module Lat = struct
     type t =
       | Un of Region.t
@@ -202,14 +203,15 @@ module Kind = struct
       | Un r1, Un r2 -> Un (Region.min r1 r2)
       | Aff r1, Aff r2 -> Aff (Region.min r1 r2)
       | Aff _, (Un _ as r) | (Un _ as r), Aff _ -> r
-    let least_upper_bound = List.fold_left min biggest
-    let greatest_lower_bound = List.fold_left max smallest
+    let least_upper_bound = List.fold_left max smallest
+    let greatest_lower_bound = List.fold_left min biggest
     let relations consts =
       let consts = smallest :: biggest :: consts in
       CCList.product (fun l r -> l, r) consts consts
       |> CCList.filter (fun (l, r) -> l < r)
   end
     
+  (* TOFIX: Use an immutable reasonable representation. *)
   module K = struct
     (* type t = Var of Name.t | Constant of Lat.t
      * let equal l1 l2 = match l1, l2 with
@@ -219,13 +221,21 @@ module Kind = struct
      * let hash = Hashtbl.hash
      * let compare l1 l2 = if equal l1 l2 then 0 else compare l1 l2 *)
     type t = T.kind
-    let equal = Pervasives.(=)
-    let hash = Hashtbl.hash
-    let compare = Pervasives.compare
+               
+    let rec shorten = function
+      | Types.KVar {contents = KLink k} -> shorten k
+      | Types.Un _ | Types.Aff _ | Types.KGenericVar _
+      | Types.KVar {contents = KUnbound _} as k -> k
+
+    let equal a b = shorten a = shorten b
+    let hash x = Hashtbl.hash (shorten x)
+    let compare a b = Pervasives.compare (shorten a) (shorten b)
 
     type constant = Lat.t
-    let classify = function
-      | T.KVar _ | T.KGenericVar _ -> `Var
+    let rec classify = function
+      | T.KVar { contents = KLink k } -> classify k
+      | T.KVar { contents = KUnbound _ }
+      | T.KGenericVar _ -> `Var
       | T.Aff r -> `Constant (Lat.Aff r)
       | T.Un r -> `Constant (Lat.Un r)
     let constant = function
@@ -233,6 +243,7 @@ module Kind = struct
       | Lat.Un r -> T.Un r
     let unify = function
       | [] -> assert false
+      | [ x ] -> x
       | h :: t -> List.fold_left (fun k1 k2 -> unify k1 k2; k1) h t
 
   end
@@ -241,6 +252,15 @@ module Kind = struct
   let solve ?keep_vars c =
     try solve ?keep_vars c with
     | FailLattice (k1, k2) -> raise (Fail (k1, k2))
+
+  (* let solve ?keep_vars l =
+   *   Format.eprintf "@[<2>Solving:@ %a@]@."
+   *     Printer.constrs l ;
+   *   let l' = solve ?keep_vars l in
+   *   Format.eprintf "@[<2>To:@ %a@]@."
+   *     Printer.constrs l' ;
+   *   l' *)
+  
   let un = T.Un Global
   let aff = T.Aff Global
   let constr = Normal.cleq
@@ -321,79 +341,70 @@ module Simplification = struct
     let map = PosMap.empty in
     let map = collect_types ~map ~level ~variance:Pos ty in
     let map = collect_kschemes ~env ~level map in
-    Kind.simplify ~keep_vars:map.kind constr
+    Kind.solve ~keep_vars:map.kind constr
 end
 
 (** Generalization *)
 module Generalize = struct
 
-  let neg = function `Pos -> `Neg | `Neg -> `Pos | `Invar -> `Invar
-  let merge_var pos orig_pos = match orig_pos, pos with
-    | None, (`Neg | `Pos | `Invar as pos) -> Some pos
-    | Some `Pos, `Pos
-    | Some `Neg, `Neg
-    | Some `Invar, _ -> orig_pos
-    | Some `Neg, `Pos
-    | Some `Pos, `Neg
-    | Some _, `Invar -> Some `Invar
-  let update_kind ~kenv ~pos k =
-    kenv := Kind.Map.update k (merge_var pos) !kenv
-  let update_type ~tyenv ~pos k =
-    tyenv := Name.Map.update k (merge_var pos) !tyenv
+  let update_kind ~kenv k =
+    kenv := Kind.Set.add k !kenv
+  let update_type ~tyenv k =
+    tyenv := Name.Set.add k !tyenv
   
-  let rec gen_kind ~level ~kenv ~pos = function
+  let rec gen_kind ~level ~kenv = function
     | T.KVar {contents = KUnbound(id, other_level)} as k
       when other_level > level ->
-      update_kind ~kenv ~pos k ;
+      update_kind ~kenv k ;
       T.KGenericVar id
-    | T.KVar {contents = KLink ty} -> gen_kind ~level ~kenv ~pos ty
+    | T.KVar {contents = KLink ty} -> gen_kind ~level ~kenv ty
     | ( T.KGenericVar _
       | T.KVar {contents = KUnbound _}
       | T.Un _ | T.Aff _
       ) as ty -> ty
 
-  let rec gen_ty ~env ~level ~tyenv ~kenv ~pos = function
+  let rec gen_ty ~env ~level ~tyenv ~kenv = function
     | T.Var {contents = Unbound(id, other_level)} when other_level > level ->
-      update_type ~tyenv ~pos id ;
+      update_type ~tyenv id ;
       T.GenericVar id
     | T.App(ty, ty_args) ->
-      App(ty, List.map (gen_ty ~env ~level ~tyenv ~kenv ~pos) ty_args)
+      App(ty, List.map (gen_ty ~env ~level ~tyenv ~kenv) ty_args)
     | T.Tuple ty_args ->
-      Tuple (List.map (gen_ty ~env ~level ~tyenv ~kenv ~pos) ty_args)
+      Tuple (List.map (gen_ty ~env ~level ~tyenv ~kenv) ty_args)
     | T.Borrow (r, k, ty) ->
-      Borrow (r, gen_kind ~level ~kenv ~pos k, gen_ty ~env ~level ~tyenv ~kenv ~pos ty)
+      Borrow (r, gen_kind ~level ~kenv k, gen_ty ~env ~level ~tyenv ~kenv ty)
     | T.Arrow(param_ty, k, return_ty) ->
-      Arrow(gen_ty ~env ~level ~tyenv ~kenv ~pos:(neg pos) param_ty,
-            gen_kind ~level ~kenv ~pos k,
-            gen_ty ~env ~level ~tyenv ~kenv ~pos return_ty)
-    | T.Var {contents = Link ty} -> gen_ty ~env ~level ~tyenv ~kenv ~pos ty
+      Arrow(gen_ty ~env ~level ~tyenv ~kenv param_ty,
+            gen_kind ~level ~kenv k,
+            gen_ty ~env ~level ~tyenv ~kenv return_ty)
+    | T.Var {contents = Link ty} -> gen_ty ~env ~level ~tyenv ~kenv ty
     | ( T.GenericVar _
       | T.Var {contents = Unbound _}
       ) as ty -> ty
 
-  let gen_kscheme ~level ~kenv ~pos = function
+  let gen_kscheme ~level ~kenv = function
     | {T. kvars = []; constr = []; args = [] ; kind } ->
-      gen_kind ~level ~kenv ~pos kind
+      gen_kind ~level ~kenv kind
     | ksch ->
       fail "Trying to generalize kinda %a. \
             This kind has already been generalized."
         Printer.kscheme ksch
 
   let gen_kschemes ~env ~level ~kenv tyset =
-    let get_kind (env : Env.t) id pos =
-      gen_kscheme ~level ~kenv ~pos (Env.find_ty id env)
+    let get_kind (env : Env.t) id =
+      gen_kscheme ~level ~kenv (Env.find_ty id env)
     in
-    Name.Map.fold (fun ty pos l -> (ty, get_kind env ty pos)::l) tyset []
+    Name.Set.fold (fun ty l -> (ty, get_kind env ty)::l) tyset []
 
   let rec gen_constraint ~level = function
     | [] -> Normal.ctrue, Normal.ctrue
     | (k1, k2) :: rest ->
-      let kenv = ref Kind.Map.empty in
-      let k1 = gen_kind ~level ~kenv ~pos:`Pos k1 in
-      let k2 = gen_kind ~level ~kenv ~pos:`Pos k2 in
+      let kenv = ref Kind.Set.empty in
+      let k1 = gen_kind ~level ~kenv k1 in
+      let k2 = gen_kind ~level ~kenv k2 in
       let constr = Normal.cleq k1 k2 in
       let c1, c2 =
-        if Kind.Map.is_empty !kenv
+        if Kind.Set.is_empty !kenv
         then constr, Normal.ctrue
         else Normal.ctrue, constr
       in
@@ -403,7 +414,7 @@ module Generalize = struct
   let collect_gen_vars ~kenv l =
     let add_if_gen = function
       | T.KGenericVar _ as k ->
-        update_kind ~kenv ~pos:`Pos k
+        update_kind ~kenv k
       | _ -> ()
     in
     List.iter (fun (k1, k2) -> add_if_gen k1; add_if_gen k2) l
@@ -414,11 +425,11 @@ module Generalize = struct
   let typ ~env ~level constr ty =
     let constr = Simplification.go ~env ~level constr ty in
 
-    let tyenv = ref Name.Map.empty in
-    let kenv = ref Kind.Map.empty in
+    let tyenv = ref Name.Set.empty in
+    let kenv = ref Kind.Set.empty in
 
     (* We built the type skeleton and collect the kindschemes *)
-    let ty = gen_ty ~env ~level ~tyenv ~kenv ~pos:`Pos ty in
+    let ty = gen_ty ~env ~level ~tyenv ~kenv ty in
     let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
 
     (* Split the constraints that are actually generalized *)
@@ -426,8 +437,8 @@ module Generalize = struct
     let constr_all = Normal.(constr_no_var @ constr) in
 
     collect_gen_vars ~kenv constr ;
-    let kvars = kinds_as_vars @@ List.map fst @@ Kind.Map.bindings !kenv in
-    let env = Name.Map.fold (fun ty _ env -> Env.rm_ty ty env) !tyenv env in
+    let kvars = kinds_as_vars @@ Kind.Set.elements !kenv in
+    let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
 
     env, constr_all, T.tyscheme ~constr ~tyvars ~kvars ty
 
@@ -504,8 +515,8 @@ module Unif = struct
 
     | T.Borrow (r1, k1, ty1), T.Borrow (r2, k2, ty2) when r1 = r2 ->
       Normal.cand [
-        unify env ty1 ty2 ;
         Kind.constr k1 k2 ;
+        unify env ty1 ty2 ;
       ]
 
     | T.Arrow(param_ty1, k1, return_ty1), T.Arrow(param_ty2, k2, return_ty2) ->

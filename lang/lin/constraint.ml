@@ -9,10 +9,6 @@ module Normal = struct
   let cleq k1 k2 : t = [ (k1, k2) ]
   let (@) : t -> t -> t = (@)
 
-  type side = Left | Right
-  let get = function Left -> fst | Right -> snd
-  let opp = function Left -> Right | Right -> Left
-
 end
 
 module type LAT = sig
@@ -39,6 +35,11 @@ module type KINDS = sig
   val unify : t list -> t
 end
 
+let (?>) f m g =
+  match m with
+  | Some m -> f m g
+  | None -> g
+
 module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
 
   module G = Graph.Persistent.Digraph.Concrete(K)
@@ -49,6 +50,9 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   module Set = CCSet.Make(G.V)
   module H = Hashtbl.Make(G.V)
 
+  let add_extra_vars map g =
+    Map.fold (fun k _ g -> G.add_vertex g k) map g
+  
   let add_lattice_inequalities g0 =
     let constants = 
       G.fold_vertex List.cons g0 []
@@ -78,8 +82,8 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
         in
         List.fold_left f ([],[]) constants
       in
-      let g = G.add_edge g (K.constant @@ Lat.greatest_lower_bound lesser) var in
-      let g = G.add_edge g var (K.constant @@ Lat.least_upper_bound greater) in
+      let g = G.add_edge g (K.constant @@ Lat.least_upper_bound lesser) var in
+      let g = G.add_edge g var (K.constant @@ Lat.greatest_lower_bound greater) in
       g
     in
     List.fold_left add_bounds g0 vars
@@ -120,6 +124,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   exception FailLattice of K.t * K.t
 
   module Simplify = struct
+
     let edges g0 =
       let cleanup_edge v1 v2 g =
         match K.classify v1, K.classify v2 with
@@ -131,15 +136,12 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       G.fold_edges cleanup_edge g0 G.empty
 
     let unused_variables vars g0 =
-      match vars with
-      | None -> g0
-      | Some vars ->
-        let cleanup_vertex v g =
-          match K.classify v with
-          | `Var when not (Map.mem v vars) -> G.remove_vertex g v
-          | `Var | `Constant _ -> g
-        in
-        G.fold_vertex cleanup_vertex g0 g0
+      let cleanup_vertex v g =
+        match K.classify v with
+        | `Var when not (Map.mem v vars) -> G.remove_vertex g v
+        | `Var | `Constant _ -> g
+      in
+      G.fold_vertex cleanup_vertex g0 g0
 
     (* Slightly modified version of Graph.Contraction(G).contract *)
     let contract prop unify g =
@@ -168,35 +170,28 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       List.fold_left add_minified_edge G.empty remaining_edges
 
     let simplify_with_position variance_map g0 =
-      match variance_map with
-      | None -> g0
-      | Some variance_map ->
-        let p (v1, v2) =
-          match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
-          | Some Variance.(Neg | Bivar), _ when G.out_degree g0 v1 = 1 -> true
-          | _, Some Variance.(Pos | Bivar) when G.in_degree g0 v2 = 1 -> true
-          | _ -> false
-        in
-        let unif ks = K.unify @@ Set.elements ks in
-        contract p unif g0
-
-    let bounds g0 = 
-      let cleanup_vertex v g =
-        match K.classify v with
-        | `Constant c when Lat.(c = smallest) || Lat.(c = biggest) ->
-          G.remove_vertex g v
-        | `Var | `Constant _ -> g
+      let p (v1, v2) =
+        match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
+        | Some Variance.(Neg | Bivar), _ when G.out_degree g0 v1 = 1 -> true
+        | _, Some Variance.(Pos | Bivar) when G.in_degree g0 v2 = 1 -> true
+        | _ -> false
       in
-      G.fold_vertex cleanup_vertex g0 g0
+      let unif ks = K.unify @@ Set.elements ks in
+      contract p unif g0
+
+    let bounds g =
+      let g = G.remove_vertex g (K.constant Lat.biggest) in
+      let g = G.remove_vertex g (K.constant Lat.smallest) in
+      g
 
     let go keep_vars g = 
       g
       |> O.transitive_closure
       |> edges
-      |> unused_variables keep_vars
-      |> simplify_with_position keep_vars
-      |> bounds
+      |> ?> unused_variables keep_vars
       |> O.transitive_reduction ~reflexive:true
+      |> ?> simplify_with_position keep_vars
+      |> bounds
   end
 
   let from_normal l =
@@ -207,26 +202,21 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
 
   let solve ?keep_vars l =
     from_normal l
+    |> ?> add_extra_vars keep_vars
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
     |> Simplify.go keep_vars
     |> to_normal
 
-  let simplify ?keep_vars l =
-    from_normal l
-    |> Simplify.go keep_vars
-    |> to_normal
+  (* let simplify ?keep_vars l =
+   *   from_normal l
+   *   |> Simplify.go keep_vars
+   *   |> to_normal *)
 end
-
-let rec shorten = function
-  | Types.KVar {contents = KLink k} -> shorten k
-  | Types.Un _ | Types.Aff _ | Types.KGenericVar _
-  | Types.KVar {contents = KUnbound _} as k -> k
 
 let denormal : Normal.t -> T.constr = fun l ->
   T.And (List.map (fun (k1, k2) -> T.KindLeq (k1, k2)) l)
-
 
 let (<=) a b : T.constr = T.KindLeq (a, b)
 let (===) a b : T.constr = T.Eq (a, b)
