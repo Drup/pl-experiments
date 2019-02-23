@@ -1,0 +1,4 @@
+let id x = x
+let app f x = f x
+let ignore x = ()
+let plus x y = x + y
