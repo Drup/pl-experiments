@@ -5,11 +5,7 @@ let bold fmt s = Format.fprintf fmt "@<0>%s%s@<0>%s" "\027[1m" s "\027[0m"
 
 let constant fmt = function
   | Int i -> Format.pp_print_int fmt i
-  | Plus -> bold fmt "+"
-  | Alloc -> bold fmt "alloc"
-  | Free -> bold fmt "free"
-  | Get -> bold fmt "get"
-  | Set -> bold fmt "set"
+  | Primitive s -> Fmt.pf fmt "%%%a" bold s
   | Y -> bold fmt "Y" 
 
 let indice_array = [|"₀";"₁";"₂";"₃";"₄";"₅";"₆";"₇";"₈";"₉"|]
@@ -35,21 +31,6 @@ let kname ?(unbound=false) fmt n =
 
 let borrow = function Read -> "" | Write -> "!"
 
-(* let rec value
- *   = fun fmt -> function
- *     | Constant c -> constant fmt c
- *     | Constructor c -> name fmt c
- *     | Constructor (c, Some v) ->
- *       Format.fprintf fmt "@[<2>%a (%a)]" name c value v
- *     | Lambda (n,e) ->
- *       Format.fprintf fmt "@[<2>%a %a %a@ %a@]"
- *         bold "fun"
- *         name n
- *         bold "->"
- *         expr e
- *     | Array a -> Format.fprintf fmt "{%a}" (Fmt.array value) a
- *     | Unit -> Fmt.string fmt "()" *)
-
 let rec expr
   = fun fmt -> function
     | Constant c -> constant fmt c
@@ -64,7 +45,7 @@ let rec expr
       Format.fprintf fmt "@[[|@ %a@ |]@]" Fmt.(list ~sep:(unit ";@ ") expr) a
     | Tuple a ->
       Format.fprintf fmt "@[(@ %a@ )@]" Fmt.(list ~sep:(unit ",@ ") expr) a
-    | App (Constant Plus, [e1; e2]) ->
+    | App (Constant (Primitive "plus"), [e1; e2]) ->
       Format.fprintf fmt "@[<2>@[%a@]@ + @[%a@]@]"
         expr_with_paren e1
         expr_with_paren e2
@@ -136,6 +117,11 @@ and kind fmt = function
   | T.Aff r -> Format.fprintf fmt "aff%a" region r
   | T.KVar { contents = x } -> kvar fmt x
   | T.KGenericVar n -> kname fmt n
+
+let use fmt (u : Multiplicity.use) = match u with
+  | Shadow -> Fmt.pf fmt "Shadow"
+  | Borrow (b, ks) -> Fmt.pf fmt "&%s(%a)" (borrow b) (Fmt.list kind) ks
+  | Normal ks -> Fmt.pf fmt "Use(%a)" (Fmt.list kind) ks
 
 let rec tyvar
   = fun fmt -> function

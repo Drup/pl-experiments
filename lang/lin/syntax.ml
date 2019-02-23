@@ -1,10 +1,11 @@
 type constant =
   | Int of int
-  | Plus
-  | Alloc
-  | Free
-  | Get
-  | Set
+  | Primitive of string
+  (* | Plus
+   * | Alloc
+   * | Free
+   * | Get
+   * | Set *)
   | Y
 
 type borrow = Read | Write
@@ -47,6 +48,7 @@ module Ty = struct
     constraints : constraints ;
     constructor : Name.t ;
     typ : typ ;
+    ret_kind : kind option ;
   }
 
 end
@@ -141,12 +143,16 @@ module Rename = struct
       let e = expr env e in
       let name = Name.create ~name () in
       Def { name ; expr = e }
-    | Type { name = {name}; params; constraints; constructor; typ } ->
+    | Type {
+        name = {name}; params; constraints;
+        constructor; typ ; ret_kind ;
+      } ->
       let kenv, venv, params = add_params params in
       let constraints = constrs ~kenv constraints in
       let constructor = Name.create ~name:constructor.name () in
       let typ = type_expr ~kenv ~tyenv ~venv typ in
       let name = Name.create ~name () in
-      Type { name ; params ; constructor ; constraints ; typ }
+      let ret_kind = CCOpt.map (kind ~kenv) ret_kind in
+      Type { name ; params ; constructor ; constraints ; typ ; ret_kind }
 
 end

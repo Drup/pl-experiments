@@ -1,60 +1,68 @@
 module STy = Syntax.Ty
 
-let transl_kind = function
-  | STy.KVar n -> Types.KGenericVar n
+let transl_kind ~ktbl ~level = function
+  | STy.KVar n ->
+    snd @@ Typing.Instantiate.instance_kvar ~ktbl ~level n
   | Un -> Un Global
   | Aff -> Aff Global
 
-let transl_constr l =
-  List.map (fun (k1, k2) -> (transl_kind k1, transl_kind k2)) l
+let transl_constr ~ktbl ~level l =
+  List.map
+    (fun (k1, k2) -> (transl_kind ~ktbl ~level k1, transl_kind ~ktbl ~level k2))
+    l
 
-let rec transl_type = function
-  | STy.Var n -> Types.GenericVar n
+let rec transl_type ~ktbl ~tbl ~level = function
+  | STy.Var n -> 
+    snd @@ Typing.Instantiate.instance_tyvar ~tbl ~level n
   | App (t, l) ->
-    let tyargs = List.map transl_type l in
+    let tyargs = List.map (transl_type ~ktbl ~tbl ~level) l in
     App (t, tyargs)
-  | Arrow (t1, k, t2) -> Arrow (transl_type t1, transl_kind k, transl_type t2)
-  | Borrow (r, k, t) -> Borrow (r, transl_kind k, transl_type t)
-
-let transl_type_instance ~level ty = 
-  let ty = transl_type ty in
-  let tbl = Hashtbl.create 10 in
-  let ktbl = Hashtbl.create 10 in
-  Typing.Instantiate.instance_type ~level ~tbl ~ktbl ty
+  | Arrow (t1, k, t2) ->
+    Arrow (transl_type ~ktbl ~tbl ~level t1,
+           transl_kind ~ktbl ~level k,
+           transl_type ~ktbl ~tbl ~level t2)
+  | Borrow (r, k, t) ->
+    Borrow (r,
+            transl_kind ~ktbl ~level k,
+            transl_type ~ktbl ~tbl ~level t)
 
 module FV = Types.Free_vars
 let (+++) = Name.Set.union
-let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ } =
-  let env, kargs, tyargs =
-    List.fold_right (fun (var, kind) (env, kargs, tyargs) ->
-        let k = transl_kind kind in
+
+let transl_decl ~env {STy. name ; params ; constraints; constructor ; typ ; ret_kind } =
+  
+  let level = 1 in
+  let tbl = Name.Tbl.create 10 in
+  let ktbl = Name.Tbl.create 10 in
+  
+  let env, kargs, _tyargs, typarams =
+    List.fold_right (fun (var, kind) (env, kargs, tyargs, typarams) ->
+        let k = transl_kind ~ktbl ~level kind in
+        let var, ty = Typing.Instantiate.instance_tyvar ~tbl ~level var in
         let schm = Types.kscheme k in
-        Env.add_ty var schm env, k::kargs, (var, k)::tyargs)
+        Env.add_ty var schm env, k::kargs, (var, k)::tyargs, ty::typarams)
       params
-      (env, [], [])
+      (env, [], [], [])
   in
-  let constrs1 = transl_constr constraints in
-  let constr_typ = transl_type typ in
-  let constrs2, k = Typing.infer_kind ~level:1 ~env constr_typ in
-  let constr = Typing.normalize_constr env
-      Constraint.[denormal constrs1; denormal constrs2]
+  let ret_kind = match ret_kind with
+    | Some kind -> transl_kind ~ktbl ~level kind
+    | None -> snd @@ Types.kind ~name:"r" 1
   in
-    
-  let kschm =
-    let kvars = FV.kind k +++ FV.kinds kargs in
-    let constr = Typing.Kind.solve constr in
-    let kvars = FV.constrs constr +++ kvars in
-    Types.kscheme ~constr ~kvars:(Name.Set.elements kvars) ~args:kargs k
+  let constr = transl_constr ~ktbl ~level constraints in
+
+  let typ = transl_type ~ktbl ~tbl ~level typ in
+  let constructor_typ =
+    Types.Arrow (typ, Un Global, App (name, typarams))
   in
-  let tyschm =
-    let ty : Types.typ =
-      Arrow (constr_typ, Un Global,
-             App (name, List.map (fun (x, _) -> Types.GenericVar x) tyargs))
-    in
-    let tyvars, kvars = FV.types ty in
-    assert Name.Set.(subset tyvars @@ of_list @@ List.map fst tyargs) ;
-    let kvars = FV.kinds kargs +++ kvars in
-    let constr = Typing.Kind.solve constr in
-    Types.tyscheme ~constr ~tyvars:tyargs ~kvars:(Name.Set.elements kvars) ty
+
+  let env, kscheme, tyscheme =
+    Typing.make_type_decl ~env ~constr kargs ret_kind typ constructor_typ
   in
-  (name, kschm, constructor, tyschm)
+
+  (* let tyschm =
+   *   let tyvars, kvars = FV.types ty in
+   *   assert Name.Set.(subset tyvars @@ of_list @@ List.map fst tyargs) ;
+   *   let kvars = FV.kinds kargs +++ kvars in
+   *   Types.tyscheme ~constr ~tyvars:tyargs ~kvars:(Name.Set.elements kvars) ty
+   * in *)
+  env, name, kscheme, constructor, tyscheme

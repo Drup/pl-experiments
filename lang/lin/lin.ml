@@ -35,47 +35,56 @@ module Lin = Zoo.Main (struct
     let file_parser = Some (Parser.file Lexer.token)
     let toplevel_parser = Some (Parser.toplevel Lexer.token)
 
+    let harness f =
+      try f () with
+      | Typing.Unif.Fail (ty1, ty2) ->
+        Zoo.error ~kind:"Type error"
+          "Cannot unify types %a and %a@."
+          Printer.typ ty1 Printer.typ ty2
+      | Typing.Kind.Fail (k1, k2) ->
+        Zoo.error ~kind:"Kind error"
+          "Cannot unify kinds %a and %a@."
+          Printer.kind k1 Printer.kind k2
+      | Multiplicity.Fail (name, u1, u2) ->
+        Zoo.error ~kind:"Use error"
+          "Variable %a used as %a and %a. This uses are incompatible."
+          Printer.name name Printer.use u1 Printer.use u2
+      | Env.Type_not_found name -> 
+        Zoo.error "Unknwon type %a" Printer.name name
+      | Env.Var_not_found name -> 
+        Zoo.error "Unknwon variable %a" Printer.name name
+    
     let exec env c =
       let c = Syntax.Rename.command env.name c in
       match c with
       | Syntax.Def {name ; expr} ->
-        let constr, types, scheme =
-          try Typing.infer_top env.ty expr
-          with
-          | Typing.Unif.Fail (ty1, ty2) ->
-            Zoo.error ~kind:"Type error"
-              "Cannot unify types %a and %a@."
-              Printer.typ ty1 Printer.typ ty2
-          | Typing.Kind.Fail (k1, k2) ->
-            Zoo.error ~kind:"Kind error"
-              "Cannot unify kinds %a and %a@."
-              Printer.kind k1 Printer.kind k2
-          | Env.Type_not_found name -> 
-            Zoo.error "Unknwon type %a" Printer.name name
-          | Env.Var_not_found name -> 
-            Zoo.error "Unknwon variable %a" Printer.name name
+        Zoo.print_info "@[<2>%a =@ @[%a@]@]@."
+          Printer.name name  Printer.expr expr
+        ;
+        let _constr, typ_env, scheme =
+          harness @@ fun () ->
+          Typing.infer_top env.ty expr
         in
         let v = () in
         (* let v = Eval.execute env.value expr in *)
-        let env = { env with ty = types } in
-        Zoo.print_info "@[<2>%a@ = @[%a@]@]@."
-          Printer.name name  Printer.expr expr
-        ;
-        Zoo.print_info "@[<2>%a@ : @[%a@]@.%a@]@."
+        let env = { env with ty = typ_env } in
+        Zoo.print_info "@[<2>%a@ : @[%a@]@]@."
           Printer.name name  Printer.scheme scheme
           (* Printer.value v *)
-          Printer.constrs constr
+          (* Printer.constrs constr *)
           (* Printer.env env.ty *)
         ;
         add_def name scheme v env
       | Syntax.Type decl ->
-        let ty_name, ty_decl, constr_name, constr_decl =
+        let typ_env, ty_name, ty_decl, constr_name, constr_decl =
+          harness @@ fun () -> 
           Transl.transl_decl ~env:env.ty decl
         in
+        let env = { env with ty = typ_env } in
         Zoo.print_info "@[<2>type %a@ = %a@]@." 
           Printer.name ty_name
           Printer.kscheme ty_decl ;
-        Zoo.print_info "@[<2>constr %a@ = %a@]@."
+        Zoo.print_info "@[<2>constructor %a :@ %a@]@."
           Printer.name constr_name
           Printer.scheme constr_decl ;        
         env

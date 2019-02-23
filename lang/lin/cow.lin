@@ -1,0 +1,14 @@
+type ('a : 'k) t : aff = Cow of ('a array)
+
+let get x i =
+  x.(i)
+
+let copy a =
+  %init (%length a) (fun i -> a.(i))
+
+let set a i x =
+  let a2 = copy a in
+  let x = {(&!a2).(i) <- x} in
+  a2
+
+let set_mult a i x = a.(i) <- x

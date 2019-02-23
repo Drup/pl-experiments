@@ -35,31 +35,32 @@ let rec is_nonexpansive = function
 (** Instance *)
 module Instantiate = struct
 
+  let instance_kvar ~level ~ktbl id =
+    try
+      Name.Tbl.find ktbl id
+    with Not_found ->
+      let b = T.kind ~name:id.name level in
+      Name.Tbl.add ktbl id b ;
+      b
+  let instance_tyvar ~level ~tbl id =
+    try
+      Name.Tbl.find tbl id
+    with Not_found ->
+      let b = T.var ~name:id.name level in
+      Name.Tbl.add tbl id b ;
+      b
+
   let rec instance_kind ~level ~ktbl = function
     | T.KVar {contents = KLink k} as korig ->
       let knew = instance_kind ~level ~ktbl k in
       if korig = knew then korig else knew
     | T.KVar {contents = KUnbound _} as k -> k
-    | T.KGenericVar id ->
-      begin try
-          snd @@ Hashtbl.find ktbl id
-        with Not_found ->
-          let name, var = T.kind ~name:id.name level in
-          Hashtbl.add ktbl id (name, var) ;
-          var
-      end
+    | T.KGenericVar id -> snd @@ instance_kvar ~level ~ktbl id
     | T.Un _ | T.Aff _ as k -> k
 
   let rec instance_type ~level ~tbl ~ktbl = function
     | T.Var {contents = Link ty} -> instance_type ~level ~tbl ~ktbl ty
-    | T.GenericVar id ->
-      begin try
-          snd @@ Hashtbl.find tbl id
-        with Not_found ->
-          let name, var = T.var ~name:id.name level in
-          Hashtbl.add tbl id (name, var) ;
-          var
-      end
+    | T.GenericVar id -> snd @@ instance_tyvar ~level ~tbl id
     | T.Var {contents = Unbound _} as ty -> ty
     | T.App(ty, args) ->
       let args = List.map (instance_type ~level ~tbl ~ktbl) args in
@@ -81,6 +82,11 @@ module Instantiate = struct
     let f = instance_kind ~level ~ktbl in
     List.map (fun (k1,k2) -> (f k1, f k2)) l
 
+  let included tbl vars = 
+    Name.Tbl.keys tbl
+    |> Sequence.for_all
+      (fun x -> CCList.mem ~eq:Name.equal x vars)
+
   let kind_scheme ~level ~kargs ~ktbl {T. kvars; constr; args; kind } =
     let kl = List.length kargs and l = List.length args in
     if kl <> l then
@@ -95,7 +101,7 @@ module Instantiate = struct
     in
     let constr = instance_constr ~level ~ktbl constr in
     let kind = instance_kind ~level ~ktbl kind in
-    assert (List.for_all (Hashtbl.mem ktbl) kvars) ;
+    assert (included ktbl kvars);
     (constr, kind)
 
   let typ_scheme ~level ~env ~tbl ~ktbl {T. constr ; tyvars; kvars; ty } =
@@ -104,24 +110,25 @@ module Instantiate = struct
     let env =
       List.fold_left
         (fun env (t,k) ->
-           let ty = fst @@ Hashtbl.find tbl t in
-           Env.add_ty ty (T.kscheme (instance_kind ~level ~ktbl k)) env)
+           let ty = fst @@ Name.Tbl.find tbl t in
+           let kind = T.kscheme (instance_kind ~level ~ktbl k) in
+           Env.add_ty ty kind env)
         env
         tyvars
     in
-    assert (List.for_all (Hashtbl.mem ktbl) kvars) ;
-    assert (List.for_all (fun (k,_) -> Hashtbl.mem tbl k) tyvars) ;
+    assert (included ktbl kvars);
+    assert (included tbl @@ List.map fst tyvars);
     (env, c, ty)
 
-  let constr level constr =
-    let ktbl = Hashtbl.create 10 in
+  let go_constr level constr =
+    let ktbl = Name.Tbl.create 10 in
     instance_constr ~level ~ktbl constr
-  let go_kind ?(args=[]) level k =
-    let ktbl = Hashtbl.create 10 in
+  let go_kscheme ?(args=[]) level k =
+    let ktbl = Name.Tbl.create 10 in
     kind_scheme ~level ~kargs:args ~ktbl k
   let go level env ty =
-    let tbl = Hashtbl.create 10 in
-    let ktbl = Hashtbl.create 10 in
+    let tbl = Name.Tbl.create 10 in
+    let ktbl = Name.Tbl.create 10 in
     typ_scheme ~level ~env ~tbl ~ktbl ty
 
 end
@@ -286,20 +293,20 @@ module Simplification = struct
       in { m with kind = f m.kind k v }
   end
 
-  let rec collect_kind ~level ~map ~variance = function
+  let rec collect_kind ~level ~variance map = function
     | T.KVar {contents = KUnbound(_, other_level)} as k
       when other_level > level ->
       PosMap.add_kind map k variance
-    | T.KVar {contents = KLink ty} -> collect_kind ~level ~map ~variance ty
+    | T.KVar {contents = KLink ty} -> collect_kind ~level ~variance map ty
     | ( T.KGenericVar _
       | T.KVar {contents = KUnbound _}
       | T.Un _ | T.Aff _
       ) -> map
   
-  let rec collect_types ~level ~map ~variance = function
+  let rec collect_type ~level ~variance map = function
     | T.GenericVar _ -> map
     | T.Var { contents = Link t } ->
-      collect_types ~level ~variance ~map t
+      collect_type ~level ~variance map t
     | T.Var {contents = Unbound(name, other_level)} ->
       if other_level > level
       then PosMap.add_ty map name variance
@@ -307,25 +314,25 @@ module Simplification = struct
     | T.App (_, args) ->
       (* TOFIX : This assumes that constructors are covariant. This is wrong *)
       List.fold_left (fun map t ->
-          collect_types ~level ~map ~variance t
+          collect_type ~level ~variance map t
         ) map args
     | T.Arrow (ty1, k, ty2) ->
-      let map = collect_types ~level ~map ~variance:(neg variance) ty1 in
-      let map = collect_kind ~level ~map ~variance k in
-      let map = collect_types ~level ~map ~variance ty2 in
+      let map = collect_type ~level ~variance:(neg variance) map ty1 in
+      let map = collect_kind ~level ~variance map k in
+      let map = collect_type ~level ~variance map ty2 in
       map
     | T.Tuple tys ->
-      let aux map ty = collect_types ~level ~map ~variance ty in
+      let aux map ty = collect_type ~level ~variance map ty in
       List.fold_left aux map tys
     | T.Borrow (_, k, ty) ->
-      let map = collect_types ~level ~variance  ~map ty in
-      let map = collect_kind ~level ~map ~variance k in
+      let map = collect_type ~level ~variance map ty in
+      let map = collect_kind ~level ~variance map k in
       map
 
   
-  let collect_kscheme ~level ~map ~variance = function
+  let collect_kscheme ~level ~variance map = function
     | {T. kvars = []; constr = []; args = [] ; kind } ->
-      collect_kind ~level ~map ~variance kind
+      collect_kind ~level ~variance map kind
     | ksch ->
       fail "Trying to generalize kinda %a. \
             This kind has already been generalized."
@@ -334,12 +341,17 @@ module Simplification = struct
   let collect_kschemes ~env ~level map =
     Name.Map.fold
       (fun ty variance map -> 
-         collect_kscheme ~level ~map ~variance (Env.find_ty ty env))
+         collect_kscheme ~level ~variance map (Env.find_ty ty env))
       map.PosMap.ty map
 
-  let go ~env ~level constr ty =
+  let go ~env ~level ~constr tys kinds =
     let map = PosMap.empty in
-    let map = collect_types ~map ~level ~variance:Pos ty in
+    let map =
+      List.fold_left (collect_kind ~level ~variance:Pos) map kinds
+    in
+    let map =
+      List.fold_left (collect_type ~level ~variance:Pos) map tys
+    in
     let map = collect_kschemes ~env ~level map in
     Kind.solve ~keep_vars:map.kind constr
 end
@@ -421,9 +433,9 @@ module Generalize = struct
 
   let kinds_as_vars l =
     Name.Set.elements @@ T.Free_vars.kinds l
-  
+
   let typ ~env ~level constr ty =
-    let constr = Simplification.go ~env ~level constr ty in
+    let constr = Simplification.go ~env ~level ~constr [ty] [] in
 
     let tyenv = ref Name.Set.empty in
     let kenv = ref Kind.Set.empty in
@@ -442,6 +454,31 @@ module Generalize = struct
 
     env, constr_all, T.tyscheme ~constr ~tyvars ~kvars ty
 
+  
+  let typ_decl ~env ~level constr args k ty =
+    let constr = Simplification.go ~env ~level ~constr [ty] (k::args) in
+
+    let tyenv = ref Name.Set.empty in
+    let kenv = ref Kind.Set.empty in
+
+    (* We built the type skeleton and collect the kindschemes *)
+    let k = gen_kind ~level ~kenv k in
+    let args = List.map (gen_kind ~level ~kenv) args in
+    let ty = gen_ty ~env ~level ~tyenv ~kenv ty in
+    let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
+
+    (* Split the constraints that are actually generalized *)
+    let constr_no_var, constr = gen_constraint ~level constr in
+    let constr_all = Normal.(constr_no_var @ constr) in
+
+    collect_gen_vars ~kenv constr ;
+    let kvars = kinds_as_vars @@ Kind.Set.elements !kenv in
+    let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
+
+    env, constr_all,
+    T.tyscheme ~constr ~tyvars ~kvars ty,
+    T.kscheme ~constr ~kvars ~args k
+
   (** The real generalization function that is aware of the value restriction. *)
   let go env level constr ty exp =
     if is_nonexpansive exp then
@@ -456,7 +493,7 @@ let rec infer_kind ~level ~env = function
   | T.App (f, args) ->
     let constrs, args = infer_kind_many ~level ~env args in
     let constr', kind =
-      Instantiate.go_kind level ~args @@ Env.find_constr f env
+      Instantiate.go_kscheme level ~args @@ Env.find_constr f env
     in
     Normal.(constr' @ constrs), kind
   | T.Tuple args ->
@@ -467,9 +504,9 @@ let rec infer_kind ~level ~env = function
     in
     Normal.(constr_tup @ constrs), return_kind
   | T.Arrow (_, k, _) -> Normal.ctrue, k
-  | T.GenericVar n -> Instantiate.go_kind level @@ Env.find_ty n env
+  | T.GenericVar n -> Instantiate.go_kscheme level @@ Env.find_ty n env
   | T.Var { contents = T.Unbound (n, _) } ->
-    Instantiate.go_kind level @@ Env.find_ty n env
+    Instantiate.go_kscheme level @@ Env.find_ty n env
   | T.Var { contents = T.Link ty } ->
     infer_kind ~level ~env ty
   | T.Borrow (Read, k, _) ->
@@ -562,73 +599,6 @@ let normalize_constr env l =
 
 let normalize (env, constr, ty) = env, normalize_constr env [constr], ty
 
-module Multiplicity = struct
-  type use =
-    | Shadow
-    | Borrow of (T.Borrow.t * T.kind list)
-    | Normal of T.kind list
-  type t = use Name.Map.t
-  let empty = Name.Map.empty
-  let var x k = Name.Map.singleton x (Normal [k])
-  let borrow x r k = Name.Map.singleton x (Borrow (r, [k]))
-
-  exception Fail of use * use
-  let fail u1 u2 = raise (Fail (u1, u2))
-
-  let constr_all_kinds ~bound ks =
-    List.map (fun k -> C.(k <= bound)) ks
-  
-  let merge (e1 : t) (e2 : t) =
-    let constr = ref [] in
-    let bound = T.Un Never in
-    let constr_kinds ks =
-      constr := (constr_all_kinds ~bound ks) @ !constr
-    in
-    let aux _x u1 u2 = match u1, u2 with
-      | Shadow, u -> Some u
-      | Borrow (r1, k1), Borrow (r2, k2) ->
-        if T.Borrow.equal r1 r2 then
-          Some (Borrow (r1, k1@k2))
-        else
-          fail u1 u2
-      | Normal l1, Normal l2 ->
-        let l = l1 @ l2 in
-        constr_kinds l ;
-        Some (Normal l)
-      | _, Shadow
-      | Borrow _, Normal _
-      | Normal _, Borrow _ -> fail u1 u2
-    in
-    let m = Name.Map.union aux e1 e2 in
-    m, C.cand !constr
-
-  let constraint_all (e : t) bound : T.constr =
-    let aux _ ks l = match ks with
-      | Normal ks -> constr_all_kinds ~bound ks @ l
-      | Borrow _ | Shadow -> []
-    in
-    let l = Name.Map.fold aux e [] in
-    C.cand l
-  let drop (e : t) x = Name.Map.remove x e
-
-  let exit_scope (e : t) =
-    let aux u = match u with
-      | Borrow _ -> Shadow
-      | _ -> u
-    in
-    Name.Map.map aux e
-
-  let weaken (e : t) v k : T.constr =
-    match Name.Map.find_opt v e with
-    | Some Shadow
-    | Some Borrow _
-    | Some Normal [_]
-      -> T.True
-    | None | Some Normal [] | Some Normal _ ->
-      C.(k <= T.Aff Never)
-end
-
-
 let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int
     | Y ->
@@ -642,7 +612,6 @@ let constant level env c =
     instantiate level env @@ constant_scheme c
   in
   Multiplicity.empty, e, constr, ty
-
 
 let with_binding env x ty f =
   let env = Env.add x ty env in
@@ -718,19 +687,19 @@ let rec infer (env : Env.t) level = function
     let mults1, env, var_constr, var_ty =
       infer env (level + 1) value_expr
     in
-    let env, generalized_constr, generalized_scheme =
+    let env, remaining_constr, generalized_scheme =
       generalize env level var_constr var_ty value_expr
     in
     with_binding env var_name generalized_scheme @@ fun env ->
     let mults2, env, body_constr, body_ty = infer env level body_expr in
     let mults, constr_merge = Multiplicity.merge mults1 mults2 in
     let constr = normalize_constr env [
-        C.denormal @@ Instantiate.constr level generalized_constr ;
+        C.denormal @@ Instantiate.go_constr level remaining_constr ;
         C.denormal body_constr ;
         constr_merge ;
       ]
     in
-    mults, env, constr, body_ty
+    Multiplicity.drop mults var_name, env, constr, body_ty
   | Match(constructor, param_name, expr, body) ->
     let mults1, env, expr_constr, expr_ty =
       infer env (level + 1) expr
@@ -756,7 +725,7 @@ let rec infer (env : Env.t) level = function
     let mults, constr_merge = Multiplicity.merge mults1 mults2 in
     let constr = normalize_constr env [
         C.denormal constr ;
-        C.denormal @@ Instantiate.constr level generalized_constr ;
+        C.denormal @@ Instantiate.go_constr level generalized_constr ;
         C.denormal body_constr ;
         constr_merge ;
       ]
@@ -783,11 +752,11 @@ and infer_var env level name =
   let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
   (name, k), env, constr, t
 
-and infer_many (env : Env.t) level mult l =
+and infer_many (env0 : Env.t) level mult l =
   let rec aux mults0 env0 constr0 tys = function
     | [] -> (mults0, env0, constr0, List.rev tys)
     | expr :: rest ->
-      let mults, env, constr, ty = infer env level expr in
+      let mults, env, constr, ty = infer env0 level expr in
       let mults, constr_merge = Multiplicity.merge mults mults0 in
       let constr = C.cand [
           C.denormal constr;
@@ -796,7 +765,7 @@ and infer_many (env : Env.t) level mult l =
         ]
       in
       aux mults env constr (ty :: tys) rest
-  in aux mult env True [] l
+  in aux mult env0 True [] l
 
 and infer_app (env : Env.t) level fn_expr args =
   let f (f_ty, env) param_ty =
@@ -821,7 +790,7 @@ let infer_top env0 e =
   let env, constr, scheme = generalize env 0 constr ty e in
 
   (* Check that the residual constraints are satisfiable. *)
-  let constr = normalize_constr env [C.denormal @@ Instantiate.constr 0 constr] in
+  let constr = normalize_constr env [C.denormal @@ Instantiate.go_constr 0 constr] in
 
   (* Remove unused variables in the environment *)
   let free_vars =
@@ -834,3 +803,26 @@ let infer_top env0 e =
 
   (* assert (constr = C.True) ; *)
   constr, env, scheme
+
+let make_type_decl ~env ~constr kargs kind typ constructor_typ =
+  let constr', inferred_k = infer_kind ~env ~level:1 typ in
+  (* Format.eprintf "%a@." Printer.kind inferred_k ; *)
+  let constr = normalize_constr env [
+      C.denormal constr ;
+      C.denormal constr' ;
+      C.( inferred_k <= kind ) ;
+    ]
+  in
+
+  (* Format.eprintf "%a@." Printer.constrs constr ; *)
+  let env, leftover_constr, tyscheme, kscheme =
+    Generalize.typ_decl ~env ~level:0 constr kargs kind constructor_typ
+  in
+  
+  (* Check that the residual constraints are satisfiable. *)
+  let _ = normalize_constr env
+      [C.denormal @@ Instantiate.go_constr 0 leftover_constr] in
+
+  (* assert (constr = C.True) ; *)
+  env, kscheme, tyscheme
+
