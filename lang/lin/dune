@@ -5,13 +5,13 @@
 )
 
 (executable
-  (name lin)
+  (name affe)
   (libraries ocamlgraph sequence zoo)
   (preprocess (pps ppx_deriving.std))
 )
 
 (alias
  (name   runtest)
- (action (ignore-stdout (run ./lin.exe %{deps})))
- (deps (glob_files "*.lin"))
+ (action (run ./affe.exe %{deps}))
+ (deps (glob_files "examples/*.affe"))
 )

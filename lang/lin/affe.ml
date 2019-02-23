@@ -1,6 +1,6 @@
-module Lin = Zoo.Main (struct
+module Affe = Zoo.Main (struct
 
-    let name = "Lin"
+    let name = "Affe"
 
     type command = Syntax.command
 
@@ -92,4 +92,4 @@ module Lin = Zoo.Main (struct
         |> add_decl ty_name ty_decl
   end)
 
-let () = Lin.main ()
+let () = Affe.main ()
