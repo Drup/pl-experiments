@@ -579,7 +579,7 @@ module Unif = struct
       let constr1, k1 = infer_kind ~env ~level ty1 in
       let constr2, k2 = infer_kind ~env ~level ty2 in
       tvar := Link ty ;
-      Normal.cand [constr1; constr2; Normal.cleq k1 k2 ; Normal.cleq k2 k1]
+      Normal.cand [constr1; constr2; Normal.cleq k1 k2]
 
     | _, _ ->
       raise (Fail (ty1, ty2))
@@ -771,7 +771,7 @@ and infer_app (env : Env.t) level fn_expr args =
   let f (f_ty, env) param_ty =
     let _, k = T.kind ~name:"a" level in
     with_type ~name:"a" ~level ~env @@ fun env return_ty _ ->
-    let constr = C.(T.Arrow (param_ty, k, return_ty) === f_ty) in
+    let constr = C.(f_ty === T.Arrow (param_ty, k, return_ty)) in
     (return_ty, env), constr
   in
   let mults, env, fn_constr, fn_ty = infer env level fn_expr in

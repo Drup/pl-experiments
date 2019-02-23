@@ -1,2 +1,4 @@
 let f = fun x -> fun y -> x
-let z = fun x -> f x x
+let a x = f 2 x
+let a2 = a 3
+let b = fun x -> f x x
