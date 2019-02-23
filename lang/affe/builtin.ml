@@ -21,22 +21,15 @@ let array_kind =
 let unit_name = Name.create ~name:"unit" ()
 let unit_ty = App (unit_name, [])
 let unit_kind = kscheme un
-let unit = Syntax.Constructor (Name.create ~name:"()" ())
-
-(* let mk_tuple n =
- *   let name = Name.create ~name:("tup"^ string_of_int n) () in
- *   let ty l = App (name, l) in
- *   let kind =
- *     let name, k = gen_kind_var () in
- *     kscheme ~kvars:[name] ~args:(List.init n (fun _ -> k)) k
- *   in
- *   name, ty, kind *)
+let unit_constr_name = Name.create ~name:"()" ()
+let unit = Syntax.Constructor unit_constr_name
 
 let initial_env =
   Env.empty
   |> Env.add_constr array_name array_kind
   |> Env.add_constr int_name int_kind
   |> Env.add_constr unit_name unit_kind
+  |> Env.add unit_constr_name (tyscheme unit_ty)
 
 module PrimMap = CCMap.Make(String)
 let primitives =
@@ -85,10 +78,13 @@ let primitives =
   )
     
 let initial_rename_env = Syntax.Rename.{
-    env = SMap.empty;
+    env = SMap.(
+        empty
+        |> add "()" unit_constr_name
+      );
     tyenv = SMap.(
         empty
-        |> add "unit" int_name
+        |> add "unit" unit_name
         |> add "int" int_name
         |> add "array" array_name
       );
