@@ -72,7 +72,8 @@ let print_message ?(loc=Nowhere) msg_type =
 (** Print the caught error *)
 let print_error (loc, err_type, msg) = print_message ~loc err_type "%s" msg
 
-let print_info msg = Format.kfprintf (fun ppf -> Format.pp_print_flush ppf ()) Format.std_formatter msg
+let print_info msg =
+  Format.printf msg
 
 module type LANGUAGE =
 sig
@@ -207,7 +208,7 @@ struct
         | Some p -> p
         | None -> fatal_error "I am sorry but this language has no interactive toplevel."
       in
-      Format.printf "%s -- programming languages zoo@\n" L.name ;
+      Format.printf "%s -- programming languages zoo@." L.name ;
       Format.printf "Type %s to exit@." eof ;
       try
         let ctx = ref ctx in
@@ -235,6 +236,7 @@ struct
     Format.set_max_boxes 42 ;
     Format.set_ellipsis_text "..." ;
     Format.set_margin 80 ;
+    Format.set_max_indent 30 ;
     try
       (* Run and load all the specified files. *)
       let ctx = List.fold_left use_file L.initial_environment !files in

@@ -68,7 +68,7 @@ module Affe = Zoo.Main (struct
         let v = () in
         (* let v = Eval.execute env.value expr in *)
         let env = { env with ty = typ_env } in
-        Zoo.print_info "@[<2>%a@ : @[%a@]@]@."
+        Zoo.print_info "@[<2>%a :@ %a@]@."
           Printer.name name  Printer.scheme scheme
           (* Printer.value v *)
           (* Printer.constrs constr *)

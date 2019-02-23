@@ -168,7 +168,7 @@ let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
   Format.pp_open_box fmt 2 ;
   begin
     if kvars <> [] then
-      Format.fprintf fmt "∀%a. "
+      Format.fprintf fmt "∀%a.@ "
         Format.(pp_print_list ~pp_sep name) kvars
   end;
   begin
@@ -187,10 +187,15 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
   in
   Format.pp_open_box fmt 0 ;
   begin
-    if kvars <> [] || tyvars <> [] then
-      Format.fprintf fmt "∀@[%a,@ %a@].@ "
-        Format.(pp_print_list ~pp_sep (kname ~unbound:false)) kvars
-        Format.(pp_print_list ~pp_sep binding) tyvars
+    let has_kinds = not @@ CCList.is_empty kvars in
+    let has_types = not @@ CCList.is_empty tyvars in
+    if has_kinds || has_types then begin
+      Fmt.pf fmt "∀@[";
+      Format.(pp_print_list ~pp_sep (kname ~unbound:false)) fmt kvars ;
+      if has_kinds && has_types then pp_sep fmt () ;
+      Format.(pp_print_list ~pp_sep binding) fmt tyvars;
+      Fmt.pf fmt "@].@ ";
+    end;
   end;
   begin
     if c <> [] then
