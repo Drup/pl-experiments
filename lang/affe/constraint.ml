@@ -219,6 +219,6 @@ let denormal : Normal.t -> T.constr = fun l ->
   T.And (List.map (fun (k1, k2) -> T.KindLeq (k1, k2)) l)
 
 let (<=) a b : T.constr = T.KindLeq (a, b)
-let (===) a b : T.constr = T.Eq (a, b)
+let (<==) a b : T.constr = T.Eq (a, b)
 let (&&&) a b : T.constr = T.And [a ; b]
 let cand l : T.constr = T.And l

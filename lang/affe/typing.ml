@@ -579,19 +579,17 @@ module Unif = struct
       let constr1, k1 = infer_kind ~env ~level ty1 in
       let constr2, k2 = infer_kind ~env ~level ty2 in
       tvar := Link ty ;
-      Normal.cand [constr1; constr2; Normal.cleq k1 k2]
+      Normal.cand [constr1; constr2; Kind.constr k1 k2; Kind.constr k2 k1]
 
     | _, _ ->
       raise (Fail (ty1, ty2))
-
-  let constr env t t' = unify env t t'
 
 end
 
 let normalize_constr env l =
   let rec unify_all = function
-    | T.Eq (t, t') -> Unif.constr env t t'
-    | T.KindLeq (k, k') -> Kind.constr k k'
+    | T.Eq (t1, t2) -> Unif.unify env t1 t2
+    | T.KindLeq (k1, k2) -> Kind.constr k1 k2
     | T.And l -> Normal.cand (List.map unify_all l)
     | T.True -> Normal.ctrue
   in
@@ -629,7 +627,7 @@ let with_type ~name ~env ~level f =
 let rec infer (env : Env.t) level = function
   | Constant c -> constant level env c
   | Lambda(param, body_expr) ->
-    let _, arrow_k = T.kind ~name:"a" level in
+    let _, arrow_k = T.kind ~name:"ar" level in
     with_type ~name:param.name ~env ~level @@ fun env param_ty param_kind ->
     let param_scheme = T.tyscheme param_ty in
     with_binding env param param_scheme @@ fun env ->
@@ -649,7 +647,7 @@ let rec infer (env : Env.t) level = function
     let mults, env, constrs, tys = 
       infer_many env level Multiplicity.empty elems
     in 
-    let f elem_ty = C.(elem_ty === array_ty) in
+    let f elem_ty = C.(elem_ty <== array_ty) in
     let elem_constr = CCList.map f tys in
     let constr = normalize_constr env [
         constrs ;
@@ -707,12 +705,12 @@ let rec infer (env : Env.t) level = function
     let env, constructor_constr, constructor_ty =
       instantiate level env @@ Env.find constructor env
     in
-    let param_ty, output_ty = match constructor_ty with
+    let param_ty, top_ty = match constructor_ty with
       | Types.Arrow (ty1, T.Un Global, ty2) -> ty1, ty2
       | _ -> assert false
     in
     let constr = normalize_constr env [
-         C.(expr_ty === output_ty) ;
+        C.(expr_ty <== top_ty) ;
         C.denormal expr_constr ;
         C.denormal constructor_constr ;
       ]
@@ -740,7 +738,7 @@ let rec infer (env : Env.t) level = function
     let mults = Multiplicity.exit_scope mults in 
     let constr = normalize_constr env [
         C.denormal constr;
-        C.(return_ty === infered_ty);
+        C.(infered_ty <== return_ty);
         Kind.first_class return_kind;
       ]
     in
@@ -771,7 +769,7 @@ and infer_app (env : Env.t) level fn_expr args =
   let f (f_ty, env) param_ty =
     let _, k = T.kind ~name:"a" level in
     with_type ~name:"a" ~level ~env @@ fun env return_ty _ ->
-    let constr = C.(f_ty === T.Arrow (param_ty, k, return_ty)) in
+    let constr = C.(f_ty <== T.Arrow (param_ty, k, return_ty)) in
     (return_ty, env), constr
   in
   let mults, env, fn_constr, fn_ty = infer env level fn_expr in
