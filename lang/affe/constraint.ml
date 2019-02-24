@@ -172,7 +172,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let simplify_with_position variance_map g0 =
       let p (v1, v2) =
         match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
-        | Some Variance.(Neg | Bivar), _ when G.out_degree g0 v1 = 1 -> true
+        | Some Variance.(Neg | Bivar), Some _ when G.out_degree g0 v1 = 1 -> true
         | _, Some Variance.(Pos | Bivar) when G.in_degree g0 v2 = 1 -> true
         | _ -> false
       in
