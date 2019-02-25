@@ -55,11 +55,13 @@ let exit_scope (e : t) =
   in
   Name.Map.map aux e
 
-let weaken (e : t) v k : T.constr =
-  match Name.Map.find_opt v e with
-  | Some Shadow
-  | Some Borrow _
-  | Some Normal [_]
-    -> T.True
-  | None | Some Normal [] | Some Normal _ ->
-    Constraint.(k <= T.Aff Never)
+let weaken (e : t) x k : T.constr * t =
+  let constr = match Name.Map.find_opt x e with
+    | Some Shadow
+    | Some Borrow _
+    | Some Normal [_]
+      -> T.True
+    | None | Some Normal [] | Some Normal _ ->
+      Constraint.(k <= T.Aff Never)
+  in
+  constr, drop e x

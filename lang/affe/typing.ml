@@ -652,13 +652,14 @@ let rec infer (env : Env.t) level = function
     let mults, env, constr, return_ty =
       infer env level body_expr
     in
+    let param_constr, mults = Multiplicity.weaken mults param param_kind in
     let constr = normalize_constr env [
         C.denormal constr;
         Multiplicity.constraint_all mults arrow_k;
-        Multiplicity.weaken mults param param_kind;
+        param_constr
       ]
     in
-    Multiplicity.drop mults param, env, constr,
+    mults, env, constr,
     T.Arrow (param_ty, arrow_k, return_ty)
   | Array elems -> 
     with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
