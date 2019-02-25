@@ -22,7 +22,7 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token <string> TYIDENT
 %token <string> UIDENT
 %token <int> INT
-%token UN AFF
+%token UN AFF LIN
 %token UNDERSCORE
 %token DOT
 %token EQUAL PLUS
@@ -183,6 +183,7 @@ kind_expr:
   | n=kind_var { Kind.KVar n }
   | UN { Kind.Un }
   | AFF { Kind.Aff }
+  | LIN { Kind.Lin }
   | UNDERSCORE { Kind.Unknown }
 
 constraints: l=separated_nonempty_list (COMMA, constr) { l }

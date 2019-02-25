@@ -56,7 +56,7 @@ module Instantiate = struct
       if korig = knew then korig else knew
     | T.KVar {contents = KUnbound _} as k -> k
     | T.KGenericVar id -> snd @@ instance_kvar ~level ~ktbl id
-    | T.Un _ | T.Aff _ as k -> k
+    | T.Un _ | T.Aff _ | T.Lin _ as k -> k
 
   let rec instance_type ~level ~tbl ~ktbl = function
     | T.Var {contents = Link ty} -> instance_type ~level ~tbl ~ktbl ty
@@ -148,7 +148,7 @@ module Kind = struct
           fail "Recursive types"
         else
           other_tvar := KUnbound(other_id, min tvar_level other_level)
-      | T.Un _ | T.Aff _ -> ()
+      | T.Un _ | T.Aff _ | T.Lin _ -> ()
     in
     f kind
 
@@ -158,6 +158,7 @@ module Kind = struct
 
     | T.Un r1, T.Un r2
     | T.Aff r1, T.Aff r2
+    | T.Lin r1, T.Lin r2
       -> if Region.equal r1 r2 then () else raise (Fail (k1, k2))
 
     | T.KVar {contents = KUnbound(id1, _)},
@@ -178,8 +179,8 @@ module Kind = struct
       (* Should always have been instantiated before *)
       assert false
 
-    | (T.Aff _ | T.Un _),
-      (T.Aff _ | T.Un _)
+    | (T.Aff _ | T.Un _ | T.Lin _),
+      (T.Aff _ | T.Un _ | T.Lin _)
       -> raise (Fail (k1, k2))
 
   (* let unify k1 k2 =
@@ -190,26 +191,39 @@ module Kind = struct
     type t =
       | Un of Region.t
       | Aff of Region.t
+      | Lin of Region.t
     let (<) l1 l2 = match l1, l2 with
-      | Aff r1, Aff r2 | Un r1, Un r2 -> Region.compare r1 r2 <= 0
-      | _, Aff Never -> true
+      | Lin r1, Lin r2
+      | Aff r1, Aff r2
+      | Un r1, Un r2 -> Region.compare r1 r2 <= 0
+      | _, Lin Never -> true
       | Un Global, _ -> true
-      | Un r1, Aff r2 -> Region.equal r1 r2
+      | Un r1, Aff r2 | Un r1, Lin r2 | Aff r1, Lin r2 -> Region.equal r1 r2
       | _ -> false
     let (=) l1 l2 = match l1, l2 with
-      | Aff r1, Aff r2 | Un r1, Un r2 -> Region.equal r1 r2
-      | Un _, Aff _ 
-      | Aff _, Un _ -> false
+      | Lin r1, Lin r2
+      | Aff r1, Aff r2
+      | Un r1, Un r2 -> Region.equal r1 r2
+      | _ -> false
     let smallest = Un Region.smallest
-    let biggest = Aff Region.biggest
+    let biggest = Lin Region.biggest
     let max l1 l2 = match l1, l2 with
       | Un r1, Un r2 -> Un (Region.max r1 r2)
       | Aff r1, Aff r2 -> Aff (Region.max r1 r2)
-      | Un _, (Aff _ as r) | (Aff _ as r), Un _ -> r
+      | Lin r1, Lin r2 -> Lin (Region.max r1 r2)
+      | Un _, (Aff _ as r)
+      | (Un _ | Aff _), (Lin _ as r)
+      | (Lin _ as r), (Un _ | Aff _)
+      | (Aff _ as r), Un _ -> r
     let min l1 l2 = match l1, l2 with
       | Un r1, Un r2 -> Un (Region.min r1 r2)
       | Aff r1, Aff r2 -> Aff (Region.min r1 r2)
-      | Aff _, (Un _ as r) | (Un _ as r), Aff _ -> r
+      | Lin r1, Lin r2 -> Lin (Region.min r1 r2)
+      | (Aff _ | Lin _), (Un _ as r)
+      | Lin _, (Aff _ as r)
+      | (Un _ as r), (Aff _ | Lin _) 
+      | (Aff _ as r), Lin _
+        -> r
     let least_upper_bound = List.fold_left max smallest
     let greatest_lower_bound = List.fold_left min biggest
     let relations consts =
@@ -231,7 +245,7 @@ module Kind = struct
                
     let rec shorten = function
       | Types.KVar {contents = KLink k} -> shorten k
-      | Types.Un _ | Types.Aff _ | Types.KGenericVar _
+      | Types.Un _ | Types.Aff _ | Types.Lin _ | Types.KGenericVar _
       | Types.KVar {contents = KUnbound _} as k -> k
 
     let equal a b = shorten a = shorten b
@@ -243,9 +257,11 @@ module Kind = struct
       | T.KVar { contents = KLink k } -> classify k
       | T.KVar { contents = KUnbound _ }
       | T.KGenericVar _ -> `Var
+      | T.Lin r -> `Constant (Lat.Lin r)
       | T.Aff r -> `Constant (Lat.Aff r)
       | T.Un r -> `Constant (Lat.Un r)
     let constant = function
+      | Lat.Lin r -> T.Lin r
       | Lat.Aff r -> T.Aff r
       | Lat.Un r -> T.Un r
     let unify = function
@@ -300,7 +316,7 @@ module Simplification = struct
     | T.KVar {contents = KLink ty} -> collect_kind ~level ~variance map ty
     | ( T.KGenericVar _
       | T.KVar {contents = KUnbound _}
-      | T.Un _ | T.Aff _
+      | T.Un _ | T.Aff _ | T.Lin _
       ) -> map
   
   let rec collect_type ~level ~variance map = function
@@ -374,7 +390,7 @@ module Generalize = struct
     | T.KVar {contents = KLink ty} -> gen_kind ~level ~kenv ty
     | ( T.KGenericVar _
       | T.KVar {contents = KUnbound _}
-      | T.Un _ | T.Aff _
+      | T.Un _ | T.Aff _ | T.Lin _
       ) as ty -> ty
 
   let rec gen_ty ~env ~level ~tyenv ~kenv = function

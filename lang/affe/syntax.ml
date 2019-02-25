@@ -29,6 +29,7 @@ module Kind = struct
     | Unknown
     | Un
     | Aff
+    | Lin
     | KVar of Name.t
   
   type constraints = (kind * kind) list
@@ -136,7 +137,7 @@ module Rename = struct
 
   let kind_expr ~kenv = function
     | Kind.KVar {name} -> Kind.KVar (find name kenv)
-    | Kind.Un | Kind.Aff | Kind.Unknown as k -> k
+    | Kind.Un | Kind.Aff | Kind.Lin | Kind.Unknown as k -> k
   let constrs ~kenv l =
     List.map (fun (k1, k2) -> (kind_expr ~kenv k1, kind_expr ~kenv k2)) l
   let rec type_expr ~kenv ~tyenv ~venv = function
@@ -163,7 +164,7 @@ module Rename = struct
     | Kind.KVar name ->
       let kenv, n = add_kind_var kenv name in
       kenv, Kind.KVar n
-    | Kind.Un | Kind.Aff | Kind.Unknown as k -> kenv, k
+    | Kind.Un | Kind.Aff | Kind.Lin | Kind.Unknown as k -> kenv, k
   let add_type_param (kenv, venv) (({name} : Name.t), k) =
     let kenv, k = add_kind_expr kenv k in
     let n = Name.create ~name () in

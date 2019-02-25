@@ -115,6 +115,7 @@ let rec kvar
 and kind fmt = function
   | T.Un r -> Format.fprintf fmt "un%a" region r
   | T.Aff r -> Format.fprintf fmt "aff%a" region r
+  | T.Lin r -> Format.fprintf fmt "lin%a" region r
   | T.KVar { contents = x } -> kvar fmt x
   | T.KGenericVar n -> kname fmt n
 

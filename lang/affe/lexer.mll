@@ -39,6 +39,7 @@ rule token = parse
   | "," { COMMA }
   | "un" { UN }
   | "aff" { AFF }
+  | "lin" { LIN }
   | ';' { SEMI }
   | ";;"	{ SEMISEMI }
   | eof	{ EOF }

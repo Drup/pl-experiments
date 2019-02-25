@@ -7,6 +7,7 @@ let transl_kind ~ktbl ~level = function
   | Unknown -> snd @@ Types.kind ~name:"r" level
   | Un -> Un Global
   | Aff -> Aff Global
+  | Lin -> Lin Global
 
 let transl_constr ~ktbl ~level l =
   List.map

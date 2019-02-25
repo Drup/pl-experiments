@@ -34,6 +34,7 @@ end
 type kind =
   | Un : region -> kind
   | Aff : region -> kind
+  | Lin : region -> kind
   | KGenericVar : Name.t -> kind
   | KVar : kuvar ref -> kind
 
@@ -100,7 +101,7 @@ module Fold = struct
     | KGenericVar n -> (`Kind n) ++ z
     | KVar { contents = KLink t } -> kind (++) z t
     | KVar { contents = KUnbound (n, _) } -> (`Kind n) ++ z
-    | Un _ | Aff _ -> z
+    | Un _ | Aff _ | Lin _ -> z
 
   let kinds (++) z l =
     List.fold_left
