@@ -23,39 +23,70 @@ type expr =
   | Region of expr
   | Tuple of expr list
 
+
+module Kind = struct
+  type kind =
+    | Unknown
+    | Un
+    | Aff
+    | KVar of Name.t
+  
+  type constraints = (kind * kind) list
+
+  type scheme = {
+    vars : Name.t list ;
+    constraints : constraints ;
+    params : kind list ;
+    kind : kind ;
+  }
+end
+
+module Ty = struct
+
+  type typ =
+    | App of Name.t * typ list
+    | Arrow of typ * Kind.kind * typ
+    | Tuple of typ list
+    | Var of Name.t
+    | Borrow of borrow * Kind.kind * typ
+
+  type scheme = { 
+    kparams : Name.t list ;
+    params : (Name.t * Kind.kind) list ;
+    constraints : Kind.constraints ;
+    typ : typ ;
+  }
+
+  type constructor = {
+    name : Name.t ;
+    constraints : Kind.constraints ;
+    typ : typ ;
+  }
+
+  type decl = {
+    name : Name.t ;
+    params : (Name.t * Kind.kind) list ;
+    kind : Kind.kind ;
+    constraints : Kind.constraints ;
+    constructor : constructor option ;
+  }
+
+end
+
 type decl = {
   name : Name.t ;
   expr : expr ;
 }
 
-module Ty = struct
-  type kind =
-    | Un
-    | Aff
-    | KVar of Name.t
-
-  type typ =
-    | App of Name.t * typ list
-    | Arrow of typ * kind * typ
-    | Var of Name.t
-    | Borrow of borrow * kind * typ
-  
-  type constraints = (kind * kind) list
-
-  type decl = {
-    name : Name.t ;
-    params : (Name.t * kind) list ;
-    constraints : constraints ;
-    constructor : Name.t ;
-    typ : typ ;
-    ret_kind : kind option ;
-  }
-
-end
+type def = {
+  name : Name.t ;
+  typ : Ty.scheme ;
+}
 
 type command =
-  | Def of decl
-  | Type of Ty.decl
+  | ValueDecl of decl
+  | TypeDecl of Ty.decl
+  | ValueDef of def
 
 module Rename = struct
   [@@@warning "-9"]
@@ -103,56 +134,87 @@ module Rename = struct
       let e2 = expr env e2 in
       Let (new_name, e1, e2)
 
-  let kind ~kenv = function
-    | Ty.KVar {name} -> Ty.KVar (find name kenv)
-    | Ty.Un | Ty.Aff as k -> k
+  let kind_expr ~kenv = function
+    | Kind.KVar {name} -> Kind.KVar (find name kenv)
+    | Kind.Un | Kind.Aff | Kind.Unknown as k -> k
   let constrs ~kenv l =
-    List.map (fun (k1, k2) -> (kind ~kenv k1, kind ~kenv k2)) l
+    List.map (fun (k1, k2) -> (kind_expr ~kenv k1, kind_expr ~kenv k2)) l
   let rec type_expr ~kenv ~tyenv ~venv = function
     | Ty.Arrow (ty1, k, ty2) ->
       Ty.Arrow (type_expr ~kenv ~tyenv ~venv ty1,
-                kind ~kenv k,
+                kind_expr ~kenv k,
                 type_expr ~kenv ~tyenv ~venv ty2)
     | Ty.App ({name}, args) ->
       Ty.App (find name tyenv, List.map (type_expr ~kenv ~tyenv ~venv) args)
+    | Ty.Tuple (args) ->
+      Ty.Tuple (List.map (type_expr ~kenv ~tyenv ~venv) args)
     | Ty.Var {name} ->
       Ty.Var (find name venv)
     | Ty.Borrow (r, k, ty) ->
-      Ty.Borrow (r, kind ~kenv k, type_expr ~kenv ~tyenv ~venv ty)
+      Ty.Borrow (r, kind_expr ~kenv k, type_expr ~kenv ~tyenv ~venv ty)
 
-
-  let add_kind ~kenv = function
-    | Ty.KVar {name} ->
-      if SMap.mem name kenv then
-        kenv, Ty.KVar (find name kenv)
-      else
-        let n = Name.create ~name () in
-        add name n kenv, Ty.KVar n
-    | Ty.Un | Ty.Aff as k -> kenv, k
-  let add_param (kenv, venv, params) (({name} : Name.t), k) =
-    let kenv, k = add_kind ~kenv k in
+  let add_kind_var kenv {Name. name} = 
+    if SMap.mem name kenv then
+      kenv, find name kenv
+    else
+      let n = Name.create ~name () in
+      add name n kenv, n
+  let add_kind_expr kenv = function
+    | Kind.KVar name ->
+      let kenv, n = add_kind_var kenv name in
+      kenv, Kind.KVar n
+    | Kind.Un | Kind.Aff | Kind.Unknown as k -> kenv, k
+  let add_type_param (kenv, venv) (({name} : Name.t), k) =
+    let kenv, k = add_kind_expr kenv k in
     let n = Name.create ~name () in
     let venv = add name n venv in
-    kenv, venv, (n,k)::params
-  let add_params l =
-    let kenv, venv, l = List.fold_left add_param (SMap.empty, SMap.empty, []) l in
-    kenv, venv, List.rev l
+    (kenv, venv), (n,k)
+
+  let kind_scheme {Kind. vars; params; constraints; kind } =
+    let kenv = SMap.empty in
+    let kenv, vars = CCList.fold_map add_kind_var kenv vars in
+    let kenv, params = CCList.fold_map add_kind_expr kenv params in
+    let constraints = constrs ~kenv constraints in
+    let kind = kind_expr ~kenv kind in
+    {Kind. vars; params; constraints; kind }
+
+  let type_scheme tyenv {Ty. kparams; params; constraints; typ } =
+    let kenv = SMap.empty and venv = SMap.empty in
+    let kenv, kparams = CCList.fold_map add_kind_var kenv kparams in
+    let (kenv, venv), params =
+      CCList.fold_map add_type_param (kenv, venv) params
+    in
+    let constraints = constrs ~kenv constraints in
+    let typ = type_expr ~kenv ~tyenv ~venv typ in
+    {Ty. kparams; params; constraints; typ}
+
+  let rename_constructor ~tyenv ~kenv ~venv  {Ty. name = {name}; constraints; typ} =
+    let name = Name.create ~name () in
+    let typ = type_expr ~kenv ~tyenv ~venv typ in
+    let constraints = constrs ~kenv constraints in
+    {Ty. name; constraints; typ}
   
   let command { env ; tyenv } = function
-    | Def { name = {name} ; expr = e } ->
+    | ValueDecl { name = {name} ; expr = e } ->
       let e = expr env e in
       let name = Name.create ~name () in
-      Def { name ; expr = e }
-    | Type {
-        name = {name}; params; constraints;
-        constructor; typ ; ret_kind ;
-      } ->
-      let kenv, venv, params = add_params params in
-      let constraints = constrs ~kenv constraints in
-      let constructor = Name.create ~name:constructor.name () in
-      let typ = type_expr ~kenv ~tyenv ~venv typ in
+      ValueDecl { name ; expr = e }
+    | TypeDecl {
+        name = {name}; params; kind; constraints; constructor; 
+      }  ->
       let name = Name.create ~name () in
-      let ret_kind = CCOpt.map (kind ~kenv) ret_kind in
-      Type { name ; params ; constructor ; constraints ; typ ; ret_kind }
+
+      let kenv = SMap.empty and venv = SMap.empty in
+      let (kenv, venv), params =
+        CCList.fold_map add_type_param (kenv, venv) params
+      in
+      let constructor = CCOpt.map (rename_constructor ~kenv ~tyenv ~venv) constructor in
+      let constraints = constrs ~kenv constraints in
+      let kind = kind_expr ~kenv kind in
+      TypeDecl { name ; params ; constructor ; constraints ; kind }
+    | ValueDef { name = {name} ; typ } ->
+      let typ = type_scheme tyenv typ in
+      let name = Name.create ~name () in
+      ValueDef { name ; typ }
 
 end

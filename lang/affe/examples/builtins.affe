@@ -1,0 +1,7 @@
+# type unit : un
+# type ('a : 'k) array : aff constraints 'k < aff
+val array_init : ('a : 'k). int -> (int -> 'a) -> 'a array
+val array_free : ('a : _). 'a array -> unit
+val array_length : 'k ('a:_). &('k, 'a array) -> int
+val array_get : 'k ('a:_). (&('k, 'a array), int) -> 'a
+val array_set : 'k ('a:_). (&!('k, 'a array), int, 'a) -> unit

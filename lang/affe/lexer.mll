@@ -4,7 +4,8 @@ open Parser
 
 rule token = parse
   | [' ' '\t']     { token lexbuf }     (* skip blanks *)
-  | '\n' { Lexing.new_line lexbuf ; token lexbuf }
+  | '#' [^ '\n']* '\n' 
+  | '\n' { Lexing.new_line lexbuf ; token lexbuf } 
   | '-'?[ '0'-'9' ]+ as x	{INT (int_of_string x)}
   | "Y" { YTOK }
   | "let" { LET }
@@ -21,6 +22,7 @@ rule token = parse
   | "<" { LESS }
   | "&!" { ANDBANG }
   | "&" { AND }
+  | "_" { UNDERSCORE }
   | "}>" { RACCOGREATER }
   | '('	{ LPAREN }
   | ')'	{ RPAREN }
@@ -29,6 +31,8 @@ rule token = parse
   | "[|"	{ LBRACKPIPE }
   | "|]"	{ PIPERBRACK }
   | "type" { TYPE }
+  | "val" { VAL }
+  | "constraints" { CONSTRAINTS }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
   | ":" { DOUBLECOLON }

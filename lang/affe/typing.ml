@@ -347,7 +347,9 @@ module Simplification = struct
   let go ~env ~level ~constr tys kinds =
     let map = PosMap.empty in
     let map =
-      List.fold_left (collect_kind ~level ~variance:Pos) map kinds
+      List.fold_left
+        (fun map (k,variance) -> collect_kind ~level ~variance map k)
+        map kinds
     in
     let map =
       List.fold_left (collect_type ~level ~variance:Pos) map tys
@@ -455,8 +457,11 @@ module Generalize = struct
     env, constr_all, T.tyscheme ~constr ~tyvars ~kvars ty
 
   
-  let typ_decl ~env ~level constr args k ty =
-    let constr = Simplification.go ~env ~level ~constr [ty] (k::args) in
+  let kind ~env ~level constr args k =
+    let constr =
+      let l = List.map (fun k -> (k, Variance.Neg)) args @ [k, Variance.Pos] in
+      Simplification.go ~env ~level ~constr [] l
+    in
 
     let tyenv = ref Name.Set.empty in
     let kenv = ref Kind.Set.empty in
@@ -464,8 +469,6 @@ module Generalize = struct
     (* We built the type skeleton and collect the kindschemes *)
     let k = gen_kind ~level ~kenv k in
     let args = List.map (gen_kind ~level ~kenv) args in
-    let ty = gen_ty ~env ~level ~tyenv ~kenv ty in
-    let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
 
     (* Split the constraints that are actually generalized *)
     let constr_no_var, constr = gen_constraint ~level constr in
@@ -476,7 +479,6 @@ module Generalize = struct
     let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
 
     env, constr_all,
-    T.tyscheme ~constr ~tyvars ~kvars ty,
     T.kscheme ~constr ~kvars ~args k
 
   (** The real generalization function that is aware of the value restriction. *)
@@ -802,19 +804,24 @@ let infer_top env0 e =
   (* assert (constr = C.True) ; *)
   constr, env, scheme
 
-let make_type_decl ~env ~constr kargs kind typ constructor_typ =
-  let constr', inferred_k = infer_kind ~env ~level:1 typ in
+let make_type_decl ~env ~constr kargs kind typ =
+  let constructor_constr =
+    match typ with
+    | None -> T.True
+    | Some typ ->
+      let constr', inferred_k = infer_kind ~env ~level:1 typ in
+      C.cand [C.denormal constr' ; C.( inferred_k <= kind ) ]
+  in
   (* Format.eprintf "%a@." Printer.kind inferred_k ; *)
   let constr = normalize_constr env [
       C.denormal constr ;
-      C.denormal constr' ;
-      C.( inferred_k <= kind ) ;
+      constructor_constr ;
     ]
   in
 
   (* Format.eprintf "%a@." Printer.constrs constr ; *)
-  let env, leftover_constr, tyscheme, kscheme =
-    Generalize.typ_decl ~env ~level:0 constr kargs kind constructor_typ
+  let env, leftover_constr, kscheme =
+    Generalize.kind ~env ~level:0 constr kargs kind
   in
   
   (* Check that the residual constraints are satisfiable. *)
@@ -822,5 +829,16 @@ let make_type_decl ~env ~constr kargs kind typ constructor_typ =
       [C.denormal @@ Instantiate.go_constr 0 leftover_constr] in
 
   (* assert (constr = C.True) ; *)
-  env, kscheme, tyscheme
+  env, kscheme
 
+let make_type_scheme ~env ~constr typ =
+  let constr = normalize_constr env [C.denormal constr ] in
+  let env, leftover_constr, tyscheme =
+    Generalize.typ ~env ~level:0 constr typ
+  in
+  (* Check that the residual constraints are satisfiable. *)
+  let _ = normalize_constr env
+      [C.denormal @@ Instantiate.go_constr 0 leftover_constr] in
+
+  (* assert (constr = C.True) ; *)
+  env, tyscheme

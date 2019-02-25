@@ -4,7 +4,7 @@ let get x i =
   x.(i)
 
 let copy a =
-  %init (%length a) (fun i -> a.(i))
+  array_init (array_length a) (fun i -> a.(i))
 
 let set a i x =
   let a2 = copy a in

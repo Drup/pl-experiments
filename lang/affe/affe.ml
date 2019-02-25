@@ -57,7 +57,7 @@ module Affe = Zoo.Main (struct
     let exec env c =
       let c = Syntax.Rename.command env.name c in
       match c with
-      | Syntax.Def {name ; expr} ->
+      | Syntax.ValueDecl {name ; expr} ->
         Zoo.print_info "@[<2>%a =@ @[%a@]@]@."
           Printer.name name  Printer.expr expr
         ;
@@ -75,21 +75,33 @@ module Affe = Zoo.Main (struct
           (* Printer.env env.ty *)
         ;
         add_def name scheme v env
-      | Syntax.Type decl ->
-        let typ_env, ty_name, ty_decl, constr_name, constr_decl =
+      | Syntax.ValueDef {name ; typ} ->
+        let _typ_env, scheme =
+          harness @@ fun () ->
+          Transl.transl_type_scheme ~env:env.ty typ
+        in
+        Zoo.print_info "@[<2>%a :@ @[%a@]@]@."
+          Printer.name name  Printer.scheme scheme
+        ;
+        let v = Syntax.Primitive name.name in
+        add_def name scheme v env
+      | Syntax.TypeDecl decl ->
+        let ty_name, ty_decl, constr =
           harness @@ fun () -> 
           Transl.transl_decl ~env:env.ty decl
         in
-        let env = { env with ty = typ_env } in
+        (* let env = { env with ty = typ_env } in *)
         Zoo.print_info "@[<2>type %a@ = %a@]@." 
           Printer.name ty_name
           Printer.kscheme ty_decl ;
-        Zoo.print_info "@[<2>constructor %a :@ %a@]@."
-          Printer.name constr_name
-          Printer.scheme constr_decl ;        
-        env
-        |> add_def constr_name constr_decl (Syntax.Constructor constr_name)
-        |> add_decl ty_name ty_decl
+        let env = add_decl ty_name ty_decl env in
+        match constr with
+        | None -> env
+        | Some (name, decl) ->
+          Zoo.print_info "@[<2>constructor %a :@ %a@]@."
+            Printer.name name
+            Printer.scheme decl ;        
+          add_def name decl (Syntax.Constructor name) env
   end)
 
 let () = Affe.main ()
