@@ -32,6 +32,7 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token LBRACKPIPE PIPERBRACK
 %token LET IN
 %token SEMI
+%token BAR
 %token TYPE VAL CONSTRAINTS
 %token RIGHTARROW LEFTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
@@ -138,14 +139,17 @@ kind_var:
 type_decl:
   | TYPE
      params=type_var_bindings name=name kind=kind_annot
-     constructor=maybe_constructor constraints=maybe_constraints
+     constructor=maybe_constructors constraints=maybe_constraints
     { TypeDecl {name; params; constructor ; constraints ; kind} }
 
-maybe_constructor:
-  | { None }
-  | EQUAL name=uname OF e=type_expr_with_constraint
+maybe_constructors:
+  | { [] }
+  | EQUAL option(BAR) l=separated_list(BAR, constructor_decl)
+    { l }
+constructor_decl:
+  name=uname OF e=type_expr_with_constraint
     { let constraints, typ = e in
-      Some {Ty. name; constraints; typ}
+      {Ty. name; constraints; typ}
     }
 
 maybe_constraints:

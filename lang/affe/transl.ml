@@ -77,8 +77,8 @@ let transl_decl ~env
   
   let level = 1 in
 
-  let constructor_scheme =
-    CCOpt.map
+  let constructor_schemes =
+    List.map
       (transl_type_constructor ~env ~level params name constraints)
       constructor
   in
@@ -88,12 +88,12 @@ let transl_decl ~env
   let ret_kind = transl_kind ~ktbl ~level kind in
   let constr = transl_constr ~ktbl ~level constraints in
 
-  let typ =
-    CCOpt.map (fun {STy. typ; _} -> transl_type ~ktbl ~tbl ~level typ) constructor
+  let typs =
+    List.map (fun {STy. typ; _} -> transl_type ~ktbl ~tbl ~level typ) constructor
   in
 
   let _env, kscheme =
-    Typing.make_type_decl ~env ~constr kargs ret_kind typ
+    Typing.make_type_decl ~env ~constr kargs ret_kind typs
   in
 
-  name, kscheme, constructor_scheme
+  name, kscheme, constructor_schemes

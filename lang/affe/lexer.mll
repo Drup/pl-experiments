@@ -12,6 +12,7 @@ rule token = parse
   | "+" { PLUS }
   | "-" { PLUS }
   | "*" { STAR }
+  | "|" { BAR }
   | "in" { IN }
   | "=" { EQUAL }
   | "fun" { FUN }

@@ -874,18 +874,17 @@ let infer_top env0 e =
   (* assert (constr = C.True) ; *)
   constr, env, scheme
 
-let make_type_decl ~env ~constr kargs kind typ =
-  let constructor_constr =
-    match typ with
-    | None -> T.True
-    | Some typ ->
-      let constr', inferred_k = infer_kind ~env ~level:1 typ in
-      C.cand [C.denormal constr' ; C.( inferred_k <= kind ) ]
+let make_type_decl ~env ~constr kargs kind typs =
+  let constructor_constrs =
+    List.map (fun typ ->
+        let constr', inferred_k = infer_kind ~env ~level:1 typ in
+        C.cand [C.denormal constr' ; C.( inferred_k <= kind ) ]
+      ) typs
   in
   (* Format.eprintf "%a@." Printer.kind inferred_k ; *)
   let constr = normalize_constr env [
       C.denormal constr ;
-      constructor_constr ;
+      C.cand constructor_constrs ;
     ]
   in
 

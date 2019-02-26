@@ -1,13 +1,6 @@
 # Session types primitives
 
-
-type ('a : 'k, 'b : 'k) either : 'k
-val left :
-  ('a:_) ('b:_) .
-  'a -> ('a, 'b) either
-val right :
-  ('a:_) ('b:_) .
-  'b -> ('a, 'b) either
+type ('a: 'k, 'b: 'k) either = Left of 'a | Right of 'b
 val either :
   'k ('a:_) ('b:_) ('r:_).
   ('a -{'k}> 'r) ->
@@ -68,13 +61,13 @@ let math_service ep =
 let main2 u =
   let (a, b) = create () in
   let u = math_service a in
-  let b = select (fun x -> left x) b in
+  let b = select Left b in
   op_client b 1 2
   
 let main2 u =
   let (a, b) = create () in
   let u = math_service a in
-  let ep = select (fun x -> right x) b in
+  let ep = select Right b in
   let ep = send 4 ep in
   let (result, ep) = receive ep in
   let u = close ep in

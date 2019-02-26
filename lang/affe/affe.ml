@@ -70,9 +70,9 @@ module Affe = Zoo.Main (struct
         let env = { env with ty = typ_env } in
         Zoo.print_info "@[<2>%a :@ %a@]@."
           Printer.name name  Printer.scheme scheme
-          (* Printer.value v *)
-          (* Printer.constrs constr *)
-          (* Printer.env env.ty *)
+        (* Printer.value v *)
+        (* Printer.constrs constr *)
+        (* Printer.env env.ty *)
         ;
         add_def name scheme v env
       | Syntax.ValueDef {name ; typ} ->
@@ -86,7 +86,7 @@ module Affe = Zoo.Main (struct
         let v = Syntax.Primitive name.name in
         add_def name scheme v env
       | Syntax.TypeDecl decl ->
-        let ty_name, ty_decl, constr =
+        let ty_name, ty_decl, constrs =
           harness @@ fun () -> 
           Transl.transl_decl ~env:env.ty decl
         in
@@ -95,13 +95,13 @@ module Affe = Zoo.Main (struct
           Printer.name ty_name
           Printer.kscheme ty_decl ;
         let env = add_decl ty_name ty_decl env in
-        match constr with
-        | None -> env
-        | Some (name, decl) ->
+        let f env (name, decl) =
           Zoo.print_info "@[<2>constructor %a :@ %a@]@."
             Printer.name name
             Printer.scheme decl ;        
           add_def name decl (Syntax.Constructor name) env
+        in
+        List.fold_left f env constrs
   end)
 
 let () = Affe.main ()

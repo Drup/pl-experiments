@@ -74,7 +74,7 @@ module Ty = struct
     params : (Name.t * Kind.kind) list ;
     kind : Kind.kind ;
     constraints : Kind.constraints ;
-    constructor : constructor option ;
+    constructor : constructor list ;
   }
 
 end
@@ -225,7 +225,7 @@ module Rename = struct
       let (kenv, venv), params =
         CCList.fold_map add_type_param (kenv, venv) params
       in
-      let constructor = CCOpt.map (rename_constructor ~kenv ~tyenv ~venv) constructor in
+      let constructor = List.map (rename_constructor ~kenv ~tyenv ~venv) constructor in
       let constraints = constrs ~kenv constraints in
       let kind = kind_expr ~kenv kind in
       TypeDecl { name ; params ; constructor ; constraints ; kind }
