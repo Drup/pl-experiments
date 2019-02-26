@@ -10,6 +10,8 @@ rule token = parse
   | "Y" { YTOK }
   | "let" { LET }
   | "+" { PLUS }
+  | "-" { PLUS }
+  | "*" { STAR }
   | "in" { IN }
   | "=" { EQUAL }
   | "fun" { FUN }
@@ -43,6 +45,6 @@ rule token = parse
   | ';' { SEMI }
   | ";;"	{ SEMISEMI }
   | eof	{ EOF }
-  | "'" ([ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
-  | ([ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
-  | ([ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }
+  | "'" ( '_'? [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
+  | ( '_'? [ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
+  | ( '_'? [ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }

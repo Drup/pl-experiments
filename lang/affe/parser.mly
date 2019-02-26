@@ -4,12 +4,12 @@ open Syntax
 let mk_lambda l body = List.fold_right (fun n e -> Lambda (n, e)) l body
 let mk_let name args e1 e2 =
   let e1 = match args with [] -> e1 | l -> mk_lambda l e1 in
-  Let (name, e1, e2)
+  Let (PVar name, e1, e2)
 let mk_decl name args e =
   let expr = match args with [] -> e | l -> mk_lambda l e in
   ValueDecl {name; expr}
 
-let mk_plus a b = App (Constant (Primitive "plus"), [a;b])
+let mk_binop op a b = App (op, [a;b])
 
 let mk_var s = Var (Name.dummy s)
 let mk_get a i = App (mk_var "array_get", [Tuple [a;i]])
@@ -25,7 +25,8 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token UN AFF LIN
 %token UNDERSCORE
 %token DOT
-%token EQUAL PLUS
+%token STAR
+%token EQUAL PLUS MINUS
 %token LPAREN RPAREN
 %token LACCO RACCO
 %token LBRACKPIPE PIPERBRACK
@@ -46,7 +47,8 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
 /* %left FUNAPP */
-%left PLUS
+%left PLUS MINUS
+%right STAR
 /* %nonassoc below_DOT */
 /* %nonassoc DOT */
 %nonassoc
@@ -69,16 +71,18 @@ command:
     { ValueDef { name ; typ } }
   | typdecl=type_decl { typdecl }
 
+
 expr:
   | e=simple_expr /* %prec below_DOT */
     { e }
   | f=simple_expr l=list_expr /* %prec FUNAPP */
      { App (f,List.rev l) }
-  | e1=expr PLUS e2=expr
-    { mk_plus e1 e2 }
-  | LET name=name args=list(name) EQUAL e1=expr IN e2=expr
+  | e1=expr op=binop e2=expr
+    { mk_binop op e1 e2 }
+  | LET name=name args=nonempty_list(name) EQUAL e1=expr IN e2=expr
     { mk_let name args e1 e2 }
-  | LET constr=uname p=name EQUAL e1=expr IN e2=expr { Match (constr, p, e1, e2) }
+  | LET p=pattern EQUAL e1=expr IN e2=expr
+    { Let (p, e1, e2) }
   | FUN l=list(name) RIGHTARROW body=expr
     { mk_lambda l body }
   | s=simple_expr DOT LPAREN i=expr RPAREN LEFTARROW e=expr
@@ -98,6 +102,16 @@ simple_expr:
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | b=borrow name=name { Borrow (b, name) }
   | s=simple_expr DOT LPAREN i=expr RPAREN { mk_get s i }
+
+%inline binop:
+  | PLUS {Constant (Primitive "plus")}
+  | MINUS {Constant (Primitive "minus")}
+  | STAR {Constant (Primitive "mult")}
+
+pattern:
+  | v=name { PVar v }
+  | constr=uname p=pattern { PConstr (constr, p) }
+  | LPAREN l=separated_nontrivial_llist(COMMA,pattern) RPAREN { PTuple l }
 
 %inline borrow:
   | AND { Read }
@@ -151,24 +165,22 @@ type_expr_with_constraint:
 
 type_expr:
   | t=simple_type_expr { t }
+  | l=separated_nontrivial_llist(STAR, simple_type_expr) { Ty.Tuple l }
   | t1=type_expr k=arrow t2=type_expr { Ty.Arrow (t1, k, t2) }
 simple_type_expr:
   | t=simple_type_expr_no_paren { t }
-  | LPAREN l=simple_type_list RPAREN %prec FUN
-    { match l with
-      | [e] -> e
-      | l -> Ty.Tuple l
-    }
+  | LPAREN e=type_expr RPAREN %prec FUN
+    { e }
 simple_type_expr_no_paren:
   | n=type_var { Ty.Var n }
   | n=name { Ty.App (n, []) }
   | t=simple_type_expr n=name { Ty.App (n, [t]) }
   | b=borrow LPAREN k=kind_expr COMMA t=type_expr RPAREN
     { Ty.Borrow (b,k,t) }
-  | LPAREN p=simple_type_list RPAREN n=name
+  | LPAREN p=type_list RPAREN n=name
     { Ty.App (n, p) }
 
-%inline simple_type_list:
+%inline type_list:
   tys = inline_reversed_separated_nonempty_llist(COMMA, type_expr) { List.rev tys }
   
 %inline arrow:
@@ -216,3 +228,17 @@ reversed_separated_nonempty_llist(separator, X):
   separator
   x = X
     { x :: xs }
+
+reversed_separated_nontrivial_llist(separator, X):
+  xs = reversed_separated_nontrivial_llist(separator, X)
+  separator
+  x = X
+    { x :: xs }
+| x1 = X
+  separator
+  x2 = X
+    { [ x2; x1 ] }
+
+%inline separated_nontrivial_llist(separator, X):
+  xs = rev(reversed_separated_nontrivial_llist(separator, X))
+    { xs }

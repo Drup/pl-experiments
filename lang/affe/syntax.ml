@@ -10,6 +10,11 @@ type constant =
 
 type borrow = Read | Write
 
+type pattern =
+  | PVar of Name.t
+  | PConstr of Name.t * pattern
+  | PTuple of pattern list
+
 type expr =
   | Constant of constant
   | Lambda of Name.t * expr
@@ -18,8 +23,8 @@ type expr =
   | Var of Name.t
   | Borrow of borrow * Name.t
   | App of expr * expr list
-  | Let of Name.t * expr * expr
-  | Match of Name.t * Name.t * expr * expr
+  (* | Let of Name.t * expr * expr *)
+  | Let of pattern * expr * expr
   | Region of expr
   | Tuple of expr list
 
@@ -107,6 +112,19 @@ module Rename = struct
 
   let add n k env = SMap.add n k env
 
+  let rec pattern env = function
+    | PVar {name} ->
+      let new_name = Name.create ~name () in
+      let env = add name new_name env in
+      env, PVar new_name
+    | PConstr (constr, p) ->
+      let constr = find constr.name env in
+      let env, p = pattern env p in
+      env, PConstr (constr, p)
+    | PTuple l ->
+      let env, l = CCList.fold_map pattern env l in
+      env, PTuple l
+  
   let rec expr env = function
     | Lambda ({name}, e) ->
       let new_name = Name.create ~name () in
@@ -121,19 +139,17 @@ module Rename = struct
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
-    | Match (constr, p, e1, e2) ->
-      let constr = find constr.name env in
+    | Let (pat, e1, e2) ->
       let e1 = expr env e1 in
-      let new_p = Name.create ~name:p.name () in
-      let env = add p.name new_p env in
+      let env, pat = pattern env pat in
       let e2 = expr env e2 in
-      Match (constr, new_p, e1, e2)
-    | Let ({name}, e1, e2) ->
-      let e1 = expr env e1 in
-      let new_name = Name.create ~name () in
-      let env = add name new_name env in
-      let e2 = expr env e2 in
-      Let (new_name, e1, e2)
+      Let (pat, e1, e2)
+    (* | Let ({name}, e1, e2) ->
+     *   let e1 = expr env e1 in
+     *   let new_name = Name.create ~name () in
+     *   let env = add name new_name env in
+     *   let e2 = expr env e2 in
+     *   Let (new_name, e1, e2) *)
 
   let kind_expr ~kenv = function
     | Kind.KVar {name} -> Kind.KVar (find name kenv)

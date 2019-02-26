@@ -135,7 +135,6 @@ module Fold = struct
   let scheme (++) z { tyvars ; ty ; _ } =
     let fv, _ = types (++) z ty in
     Name.Set.diff fv (Name.Set.of_list @@ List.map fst tyvars)
-
 end
 
 module Free_vars = struct
@@ -153,4 +152,9 @@ module Free_vars = struct
     | `Kind x -> fv, Name.Set.add x kfv
   let types ty = Fold.types fv_red fv_zero ty
   let scheme s = Fold.scheme fv_red fv_zero s
+  let schemes l =
+    List.fold_left
+      (fun e sch -> Name.Set.union e @@ scheme sch)
+      Name.Set.empty
+      l
 end

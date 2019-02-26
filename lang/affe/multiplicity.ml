@@ -23,15 +23,14 @@ let merge (e1 : t) (e2 : t) =
   in
   let aux x u1 u2 = match u1, u2 with
     | Shadow, u -> Some u
-    | Borrow (r1, k1), Borrow (r2, k2) ->
-      if T.Borrow.equal r1 r2 then
-        Some (Borrow (r1, k1@k2))
-      else
-        fail x u1 u2
+    | Borrow (Read, k1), Borrow (Read, k2) ->
+      Some (Borrow (Read, k1@k2))
     | Normal l1, Normal l2 ->
       let l = l1 @ l2 in
       constr_kinds l ;
       Some (Normal l)
+    | Borrow _, Borrow (Write, _)
+    | Borrow (Write,_), Borrow _
     | _, Shadow
     | Borrow _, Normal _
     | Normal _, Borrow _ -> fail x u1 u2
@@ -46,7 +45,6 @@ let constraint_all (e : t) bound : T.constr =
   in
   let l = Name.Map.fold aux e [] in
   Constraint.cand l
-let drop (e : t) x = Name.Map.remove x e
 
 let exit_scope (e : t) =
   let aux u = match u with
@@ -64,4 +62,4 @@ let weaken (e : t) x k : T.constr * t =
     | None | Some Normal [] | Some Normal _ ->
       Constraint.(k <= T.Aff Never)
   in
-  constr, drop e x
+  constr, Name.Map.remove x e

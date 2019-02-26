@@ -39,11 +39,11 @@ module Affe = Zoo.Main (struct
       try f () with
       | Typing.Unif.Fail (ty1, ty2) ->
         Zoo.error ~kind:"Type error"
-          "Cannot unify types %a and %a@."
+          "@[<2>Cannot unify types@ %a@]@ @[<2>and@ %a@]@."
           Printer.typ ty1 Printer.typ ty2
       | Typing.Kind.Fail (k1, k2) ->
         Zoo.error ~kind:"Kind error"
-          "Cannot unify kinds %a and %a@."
+          "@[<2>Cannot unify kinds@ %a@]@ @[<2>and@ %a@]@."
           Printer.kind k1 Printer.kind k2
       | Multiplicity.Fail (name, u1, u2) ->
         Zoo.error ~kind:"Use error"

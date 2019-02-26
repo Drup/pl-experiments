@@ -1,0 +1,81 @@
+# Session types primitives
+
+
+type ('a : 'k, 'b : 'k) either : 'k
+val left :
+  ('a:_) ('b:_) .
+  'a -> ('a, 'b) either
+val right :
+  ('a:_) ('b:_) .
+  'b -> ('a, 'b) either
+val either :
+  'k ('a:_) ('b:_) ('r:_).
+  ('a -{'k}> 'r) ->
+  ('b -{'k}> 'r) -{'k}>
+  ('a, 'b) either -{'k}> 'r
+
+type empty : un
+type ('a : _, 'b: _) st : lin
+type ('a : _) ot : lin # = (empty, 'a) st
+type ('a : _) it : lin # = ('a, empty) st
+
+val receive:
+  ('a:_)('b:_)('m:un).
+#  ('m * ('a, 'b) st) it -> 'm * ('a, 'b) st
+  ('m * ('a, 'b) st, empty) st -> 'm * ('a, 'b) st
+
+val send :
+  ('a:_)('b:_)('m:un).
+#  'm -> ('m * ('a, 'b) st) ot -> ('b, 'a) st
+  'm -> (empty, 'm * ('a, 'b) st) st -> ('b, 'a) st
+
+val create :
+  ('a:_) ('b:_).
+  unit -> ('a, 'b) st * ('b, 'a) st
+
+val close : . (empty, empty) st -> unit
+
+val select :
+  ('a:_)('b:_)('m:_).
+  (('a, 'b) st -> 'm) -> (empty, 'm) st -> ('b, 'a) st
+
+val branch : ('m:_). ('m, empty) st -> 'm
+
+# Protocol implementation
+
+let op_client ep x y =
+  let ep = send x ep in
+  let ep = send y ep in
+  let (result, ep) = receive ep in
+  let u = close ep in
+  result
+
+let add_service ep =
+  let (x, ep) = receive ep in
+  let (y, ep) = receive ep in
+  let ep = send (x + y) ep in
+  close ep
+
+let dec_service ep =
+  let (x, ep) = receive ep in
+  let ep = send (x - 1) ep in
+  close ep
+
+let math_service ep =
+  let b = branch ep in
+  either add_service dec_service b
+
+let main2 u =
+  let (a, b) = create () in
+  let u = math_service a in
+  let b = select (fun x -> left x) b in
+  op_client b 1 2
+  
+let main2 u =
+  let (a, b) = create () in
+  let u = math_service a in
+  let ep = select (fun x -> right x) b in
+  let ep = send 4 ep in
+  let (result, ep) = receive ep in
+  let u = close ep in
+  result
