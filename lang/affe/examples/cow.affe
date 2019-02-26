@@ -1,4 +1,4 @@
-type ('a : 'k) t : aff = Cow of ('a array)
+# type ('a : 'k) t : aff = 'a array
 
 let get x i =
   x.(i)
@@ -11,4 +11,4 @@ let set a i x =
   let x = {(&!a2).(i) <- x} in
   a2
 
-let set_mult a i x = a.(i) <- x
+let set_mut a i x = a.(i) <- x

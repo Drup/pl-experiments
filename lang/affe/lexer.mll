@@ -9,16 +9,11 @@ rule token = parse
   | '-'?[ '0'-'9' ]+ as x	{INT (int_of_string x)}
   | "Y" { YTOK }
   | "let" { LET }
-  | "+" { PLUS }
-  | "-" { PLUS }
-  | "*" { STAR }
-  | "|" { BAR }
   | "in" { IN }
   | "=" { EQUAL }
   | "fun" { FUN }
+  | "rec" { REC }
   | "%" { PERCENT }
-  | ">" { GREATER }
-  | "." { DOT }
   | "->" { RIGHTARROW }
   | "<-" { LEFTARROW }
   | "-{" { DASHLACCO }
@@ -33,11 +28,21 @@ rule token = parse
   | '}'	{ RACCO }
   | "[|"	{ LBRACKPIPE }
   | "|]"	{ PIPERBRACK }
+  | "-" { MINUS }
+  | "<" { LESS }
+  | ">" { GREATER }
+  | "+" { PLUS }
+  | "*" { STAR }
+  | "|" { BAR }
+  | "/" { DIV }
+  | "." { DOT }
   | "type" { TYPE }
   | "val" { VAL }
-  | "constraints" { CONSTRAINTS }
+  | "with" { WITH }
+  | "match" { MATCH }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
+  | "for all" | "\\" { FORALL }
   | ":" { DOUBLECOLON }
   | "," { COMMA }
   | "un" { UN }

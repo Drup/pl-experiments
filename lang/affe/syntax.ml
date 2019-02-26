@@ -10,22 +10,29 @@ type constant =
 
 type borrow = Read | Write
 
+type rec_flag =
+  | Rec
+  | NonRec
+
 type pattern =
   | PUnit
   | PVar of Name.t
-  | PConstr of Name.t * pattern
+  | PConstr of Name.t * pattern option
   | PTuple of pattern list
 
-type expr =
+type lambda = pattern * expr
+
+and expr =
   | Constant of constant
-  | Lambda of pattern * expr
+  | Lambda of lambda
   | Array of expr list
   | Constructor of Name.t
   | Var of Name.t
   | Borrow of borrow * Name.t
   | App of expr * expr list
   (* | Let of Name.t * expr * expr *)
-  | Let of pattern * expr * expr
+  | Let of rec_flag * pattern * expr * expr
+  | Match of expr * lambda list
   | Region of expr
   | Tuple of expr list
 
@@ -81,6 +88,7 @@ module Ty = struct
 end
 
 type decl = {
+  rec_flag : rec_flag ;
   name : Name.t ;
   expr : expr ;
 }
@@ -119,18 +127,20 @@ module Rename = struct
       let new_name = Name.create ~name () in
       let env = add name new_name env in
       env, PVar new_name
-    | PConstr (constr, p) ->
+    | PConstr (constr, None) ->
+      let constr = find constr.name env in
+      env, PConstr (constr, None)
+    | PConstr (constr, Some p) ->
       let constr = find constr.name env in
       let env, p = pattern env p in
-      env, PConstr (constr, p)
+      env, PConstr (constr, Some p)
     | PTuple l ->
       let env, l = CCList.fold_map pattern env l in
       env, PTuple l
   
   let rec expr env = function
     | Lambda (pat, e) ->
-      let env, pat = pattern env pat in
-      let e = expr env e in
+      let pat, e = lambda env (pat, e) in
       Lambda (pat, e)
     | Constructor ({name}) -> Constructor (find name env)
     | Constant _ as e -> e
@@ -140,17 +150,26 @@ module Rename = struct
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
-    | Let (pat, e1, e2) ->
-      let e1 = expr env e1 in
-      let env, pat = pattern env pat in
-      let e2 = expr env e2 in
-      Let (pat, e1, e2)
+    | Let (b, pat, e1, e2) ->
+      let env', pat = pattern env pat in
+      let e1 = expr (if b = Rec then env' else env) e1 in
+      let e2 = expr env' e2 in
+      Let (b, pat, e1, e2)
+    | Match (e, l) ->
+      let e = expr env e in
+      let l = List.map (lambda env) l in
+      Match (e, l)
     (* | Let ({name}, e1, e2) ->
      *   let e1 = expr env e1 in
      *   let new_name = Name.create ~name () in
      *   let env = add name new_name env in
      *   let e2 = expr env e2 in
      *   Let (new_name, e1, e2) *)
+
+  and lambda env (pat, e) = 
+    let env, pat = pattern env pat in
+    let e = expr env e in
+    (pat, e)
 
   let kind_expr ~kenv = function
     | Kind.KVar {name} -> Kind.KVar (find name kenv)
@@ -213,10 +232,10 @@ module Rename = struct
     {Ty. name; constraints; typ}
   
   let command { env ; tyenv } = function
-    | ValueDecl { name = {name} ; expr = e } ->
+    | ValueDecl { rec_flag; name = {name} ; expr = e } ->
       let e = expr env e in
       let name = Name.create ~name () in
-      ValueDecl { name ; expr = e }
+      ValueDecl { rec_flag; name ; expr = e }
     | TypeDecl {
         name = {name}; params; kind; constraints; constructor; 
       }  ->

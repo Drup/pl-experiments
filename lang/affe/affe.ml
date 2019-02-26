@@ -57,13 +57,13 @@ module Affe = Zoo.Main (struct
     let exec env c =
       let c = Syntax.Rename.command env.name c in
       match c with
-      | Syntax.ValueDecl {name ; expr} ->
+      | Syntax.ValueDecl {rec_flag ; name ; expr} ->
         Zoo.print_info "@[<2>%a =@ @[%a@]@]@."
           Printer.name name  Printer.expr expr
         ;
         let _constr, typ_env, scheme =
           harness @@ fun () ->
-          Typing.infer_top env.ty expr
+          Typing.infer_top env.ty rec_flag name expr
         in
         let v = () in
         (* let v = Eval.execute env.value expr in *)

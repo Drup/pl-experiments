@@ -24,19 +24,36 @@ let unit_kind = kscheme un
 let unit_constr_name = Name.create ~name:"()" ()
 let unit = Syntax.Constructor unit_constr_name
 
+let bool_name = Name.create ~name:"bool" ()
+let bool = App (bool_name, [])
+let bool_kind = kscheme un
+let true_constr_name = Name.create ~name:"True" ()
+let true_val = Syntax.Constructor true_constr_name
+let false_constr_name = Name.create ~name:"False" ()
+let false_val = Syntax.Constructor false_constr_name
+
 let initial_env =
   Env.empty
   |> Env.add_constr array_name array_kind
   |> Env.add_constr int_name int_kind
   |> Env.add_constr unit_name unit_kind
+  |> Env.add_constr bool_name bool_kind
   |> Env.add unit_constr_name (tyscheme unit_ty)
+  |> Env.add true_constr_name (tyscheme bool)
+  |> Env.add false_constr_name (tyscheme bool)
 
 module PrimMap = CCMap.Make(String)
 let primitives =
   let open PrimMap in
   (* let un = Un Global in *)
   empty
-  |> add "plus" @@ tyscheme (int @-> int @-> int)
+  |> add "+" @@ tyscheme (int @-> int @-> int)
+  |> add "-" @@ tyscheme (int @-> int @-> int)
+  |> add "*" @@ tyscheme (int @-> int @-> int)
+  |> add "/" @@ tyscheme (int @-> int @-> int)
+  |> add "<" @@ tyscheme (int @-> int @-> bool)
+  |> add ">" @@ tyscheme (int @-> int @-> bool)
+  |> add "=" @@ tyscheme (int @-> int @-> bool)
   (* |> add "init" (
    *   let name, a = Types.gen_var () in
    *   tyscheme ~tyvars:[name, un]
@@ -81,11 +98,14 @@ let initial_rename_env = Syntax.Rename.{
     env = SMap.(
         empty
         |> add "()" unit_constr_name
+        |> add "True" true_constr_name
+        |> add "False" false_constr_name
       );
     tyenv = SMap.(
         empty
         |> add "unit" unit_name
         |> add "int" int_name
         |> add "array" array_name
+        |> add "bool" bool_name
       );
   }

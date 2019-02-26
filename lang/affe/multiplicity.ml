@@ -38,6 +38,24 @@ let merge (e1 : t) (e2 : t) =
   let m = Name.Map.union aux e1 e2 in
   m, Constraint.cand !constr
 
+let parallel_merge  (e1 : t) (e2 : t) =
+  let aux x u1 u2 = match u1, u2 with
+    | Shadow, Shadow -> Some Shadow
+    | Borrow (Read as r, k1), Borrow (Read, k2)
+    | Borrow (Write as r, k1), Borrow (Write, k2) ->
+      Some (Borrow (r, k1@k2))
+    | Normal l1, Normal l2 ->
+      let l = l1 @ l2 in
+      Some (Normal l)
+    | Borrow _, Borrow (Write, _)
+    | Borrow (Write,_), Borrow _
+    | Borrow _, Normal _
+    | Shadow, _ | _, Shadow
+    | Normal _, Borrow _ -> fail x u1 u2
+  in
+  let m = Name.Map.union aux e1 e2 in
+  m, Constraint.T.True
+
 let constraint_all (e : t) bound : T.constr =
   let aux _ ks l = match ks with
     | Normal ks -> constr_all_kinds ~bound ks @ l

@@ -24,10 +24,11 @@ let rec is_nonexpansive = function
   | App (Constructor _, l) ->
     List.for_all is_nonexpansive l
   | Region e -> is_nonexpansive e
-  | Let (_, e1, e2) ->
+  | Let (_, _, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
-  (* | Match (_, e1, e2) ->
-   *   is_nonexpansive e1 && is_nonexpansive e2 *)
+  | Match (e, l) ->
+    is_nonexpansive e &&
+    List.for_all (fun (_, e) -> is_nonexpansive e) l
   | App (_, _)
   | Array _
     -> false
@@ -651,117 +652,24 @@ let with_type ~name ~env ~level f =
   let env = Env.add_ty var_name kind_scheme env in
   f env ty kind
 
-let rec infer (env : Env.t) level = function
-  | Constant c -> constant level env c
-  | Lambda(param, body_expr) ->
-    let _, arrow_k = T.kind ~name:"ar" level in
-    with_pattern env level false param  @@ fun env param_constr param_ty ->
-    let mults, env, constr, return_ty =
-      infer env level body_expr
-    in
-    let constr = normalize_constr env [
-        C.denormal constr;
-        C.denormal param_constr;
-        Multiplicity.constraint_all mults arrow_k;
-      ]
-    in
-    mults, env, constr,
-    T.Arrow (param_ty, arrow_k, return_ty)
-  | Array elems -> 
-    with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
-    let mults, env, constrs, tys = 
-      infer_many env level Multiplicity.empty elems
-    in 
-    let f elem_ty = C.(elem_ty <== array_ty) in
-    let elem_constr = CCList.map f tys in
-    let constr = normalize_constr env [
-        constrs ;
-        C.cand elem_constr ;
-      ]
-    in
-    mults, env, constr, Builtin.array array_ty
-  | Tuple elems -> 
-    let mults, env, constrs, tys =
-      infer_many env level Multiplicity.empty elems
-    in
-    let constr = normalize_constr env [
-        constrs ;
-      ]
-    in
-    mults, env, constr, T.Tuple tys
-  | Constructor name ->
-    let env, constr1, t = instantiate level env @@ Env.find name env in
-    let constr2, k = infer_kind ~level ~env t in
-    assert (k = Kind.un) ;
-    let constr = normalize_constr env [C.denormal constr1; C.denormal constr2] in
-    Multiplicity.empty, env, constr, t
 
-  | Var name ->
-    let (name, k), env, constr, ty = infer_var env level name in
-    Multiplicity.var name k, env, constr, ty
-
-  | Borrow (r, name) ->
-    let _, borrow_k = T.kind ~name:"b" level in
-    let (name, _), env, constr, borrow_ty = infer_var env level name in
-    let mults = Multiplicity.borrow name r borrow_k in
-    mults, env, constr, T.Borrow (r, borrow_k, borrow_ty)
-
-  (* | Let(var_name, value_expr, body_expr) ->
-   *   let mults1, env, var_constr, var_ty =
-   *     infer env (level + 1) value_expr
-   *   in
-   *   let env, remaining_constr, generalized_scheme =
-   *     generalize env level var_constr var_ty value_expr
-   *   in
-   *   with_binding env var_name generalized_scheme @@ fun env ->
-   *   let mults2, env, body_constr, body_ty = infer env level body_expr in
-   *   let mults, constr_merge = Multiplicity.merge mults1 mults2 in
-   *   let constr = normalize_constr env [
-   *       C.denormal @@ Instantiate.go_constr level remaining_constr ;
-   *       C.denormal body_constr ;
-   *       constr_merge ;
-   *     ]
-   *   in
-   *   Multiplicity.drop mults var_name, env, constr, body_ty *)
-  | Let (pattern, expr, body) ->
-    let mults1, env, expr_constr, expr_ty =
-      infer env (level + 1) expr
-    in
-    let generalize = is_nonexpansive expr in
-    with_pattern env level generalize pattern @@ fun env pat_constr pat_ty ->
-    let mults2, env, body_constr, body_ty = infer env level body in
-    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
-    let constr = normalize_constr env [
-        C.(expr_ty <== pat_ty) ;
-        C.denormal expr_constr ;
-        C.denormal pat_constr ;
-        C.denormal body_constr ;
-        constr_merge ;
-      ]
-    in
-    mults, env, constr, body_ty
-  | App(fn_expr, arg) ->
-    infer_app env level fn_expr arg
-
-  | Region expr ->
-    with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
-    let mults, env, constr, infered_ty = infer env level expr in
-    let mults = Multiplicity.exit_scope mults in 
-    let constr = normalize_constr env [
-        C.denormal constr;
-        C.(infered_ty <== return_ty);
-        Kind.first_class return_kind;
-      ]
-    in
-    mults, env, constr, return_ty
-
-and infer_pattern env level = function
+let rec infer_pattern env level = function
   | PUnit ->
     env, T.True, [], Builtin.unit_ty
   | PVar n ->
     with_type ~name:n.name ~env ~level @@ fun env ty k ->
     env, T.True, [n, ty, k], ty
-  | PConstr (constructor, pat) ->
+  | PConstr (constructor, None) ->
+    let env, constructor_constr, constructor_ty =
+      instantiate level env @@ Env.find constructor env
+    in
+    let top_ty = constructor_ty in
+    let constr = C.cand [
+        C.denormal constructor_constr ;
+      ]
+    in
+    env, constr, [], top_ty
+  | PConstr (constructor, Some pat) ->
     let env, constructor_constr, constructor_ty =
       instantiate level env @@ Env.find constructor env
     in
@@ -814,6 +722,170 @@ and with_pattern env level generalize pat k =
   in
   mults, env, constrs, ty
 
+
+
+let rec infer (env : Env.t) level = function
+  | Constant c -> constant level env c
+  | Lambda(param, body) ->
+    let _, arrow_k = T.kind ~name:"ar" level in
+    let mults, env, constr, (param_ty, return_ty) =
+      infer_lambda env level (param, body)
+    in
+    let constr = normalize_constr env [
+        C.denormal constr;
+        Multiplicity.constraint_all mults arrow_k;
+      ]
+    in
+    let ty = T.Arrow (param_ty, arrow_k, return_ty) in
+    mults, env, constr, ty
+    
+  | Array elems -> 
+    with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
+    let mults, env, constrs, tys = 
+      infer_many env level Multiplicity.empty elems
+    in 
+    let f elem_ty = C.(elem_ty <== array_ty) in
+    let elem_constr = CCList.map f tys in
+    let constr = normalize_constr env [
+        constrs ;
+        C.cand elem_constr ;
+      ]
+    in
+    mults, env, constr, Builtin.array array_ty
+  | Tuple elems -> 
+    let mults, env, constrs, tys =
+      infer_many env level Multiplicity.empty elems
+    in
+    let constr = normalize_constr env [
+        constrs ;
+      ]
+    in
+    mults, env, constr, T.Tuple tys
+  | Constructor name ->
+    let env, constr1, t = instantiate level env @@ Env.find name env in
+    let constr2, k = infer_kind ~level ~env t in
+    assert (k = Kind.un) ;
+    let constr = normalize_constr env [
+        C.denormal constr1;
+        C.denormal constr2
+      ]
+    in
+    Multiplicity.empty, env, constr, t
+
+  | Var name ->
+    let (name, k), env, constr, ty = infer_var env level name in
+    Multiplicity.var name k, env, constr, ty
+
+  | Borrow (r, name) ->
+    let _, borrow_k = T.kind ~name:"b" level in
+    let (name, _), env, constr, borrow_ty = infer_var env level name in
+    let mults = Multiplicity.borrow name r borrow_k in
+    mults, env, constr, T.Borrow (r, borrow_k, borrow_ty)
+
+  | Let (NonRec, pattern, expr, body) ->
+    let mults1, env, expr_constr, expr_ty =
+      infer env (level + 1) expr
+    in
+    let generalize = is_nonexpansive expr in
+    with_pattern env level generalize pattern @@ fun env pat_constr pat_ty ->
+    let mults2, env, body_constr, body_ty = infer env level body in
+    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
+    let constr = normalize_constr env [
+        C.(expr_ty <== pat_ty) ;
+        C.denormal expr_constr ;
+        C.denormal pat_constr ;
+        C.denormal body_constr ;
+        constr_merge ;
+      ]
+    in
+    mults, env, constr, body_ty
+  | Let (Rec, PVar n, expr, body) ->
+    with_type ~name:n.name ~env ~level:(level + 1) @@ fun env ty k ->
+    with_binding env n (T.tyscheme ty) @@ fun env ->
+    let mults1, env, expr_constr, expr_ty =
+      infer env (level + 1) expr
+    in
+    let expr_constr = normalize_constr env [
+        C.(k <= Un Never) ;
+        C.(expr_ty <== ty) ;
+        C.denormal expr_constr
+      ]
+    in
+    let generalize = is_nonexpansive expr in
+    let env, remaining_constr, scheme =
+      Generalize.typ env level generalize expr_constr ty
+    in
+    with_binding env n scheme @@ fun env ->
+    let mults2, env, body_constr, body_ty = infer env level body in
+    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
+    let constr = normalize_constr env [
+        C.denormal expr_constr ;
+        C.denormal remaining_constr ;
+        C.denormal body_constr ;
+        constr_merge ;
+      ]
+    in
+    mults, env, constr, body_ty
+  | Let (Rec, p, _, _) ->
+    fail "Such patterns are not allowed on the left hand side of a let rec@ %a"
+      Printer.pattern p
+
+  | Match (expr, cases) ->
+    let mults, env, expr_constrs, match_ty = infer env level expr in
+    with_type ~name:"pat" ~env ~level @@ fun env return_ty _ ->
+    let aux case =
+      let mults, env, constrs, (pattern, body_ty) =
+        infer_lambda env level case
+      in
+      let constrs = normalize_constr env [
+          C.denormal constrs;
+          C.(match_ty <== pattern);
+          C.(body_ty <== return_ty);
+        ]
+      in
+      mults, constrs
+    in
+    let l = List.map aux cases in
+    let reduce (m1,c1) (m2,c2) =
+      let mults, mult_c = Multiplicity.parallel_merge m1 m2 in
+      let constrs = C.cand [mult_c; c1; C.denormal c2] in
+      mults, constrs
+    in 
+    let mults, match_constrs = List.fold_left reduce (mults, T.True) l in
+    let constrs = normalize_constr env [
+        C.denormal expr_constrs;
+        match_constrs ;
+      ]
+    in
+    mults, env, constrs, return_ty
+    
+  | App(fn_expr, arg) ->
+    infer_app env level fn_expr arg
+
+  | Region expr ->
+    with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
+    let mults, env, constr, infered_ty = infer env level expr in
+    let mults = Multiplicity.exit_scope mults in 
+    let constr = normalize_constr env [
+        C.denormal constr;
+        C.(infered_ty <== return_ty);
+        Kind.first_class return_kind;
+      ]
+    in
+    mults, env, constr, return_ty
+
+and infer_lambda env level (pattern, body_expr) =
+  with_pattern env level false pattern @@ fun env param_constr param_ty ->
+  let mults, env, constr, return_ty =
+    infer env level body_expr
+  in
+  let constr = normalize_constr env [
+      C.denormal constr;
+      C.denormal param_constr;
+    ]
+  in
+  mults, env, constr, (param_ty, return_ty)
+  
 and infer_var env level name =
   let env, constr1, t = instantiate level env @@ Env.find name env in
   let constr2, k = infer_kind ~level ~env t in
@@ -853,8 +925,13 @@ and infer_app (env : Env.t) level fn_expr args =
   in
   mults, env, constr, return_ty
 
-let infer_top env0 e =
-  let _, env, constr, ty = infer env0 1 e in
+let infer_top env _rec_flag n e =
+  let _, env, constr, ty =
+    let level = 1 in
+    with_type ~name:n.Name.name ~env ~level @@ fun env ty _k ->
+    with_binding env n (T.tyscheme ty) @@ fun env ->
+    infer env level e
+  in
   let g = is_nonexpansive e in
   let env, constr, scheme = Generalize.typ env 0 g constr ty in
 

@@ -2,12 +2,12 @@
 open Syntax
 
 let mk_lambda l body = List.fold_right (fun n e -> Lambda (n, e)) l body
-let mk_let name args e1 e2 =
+let mk_let r name args e1 e2 =
   let e1 = match args with [] -> e1 | l -> mk_lambda l e1 in
-  Let (PVar name, e1, e2)
-let mk_decl name args e =
+  Let (r, PVar name, e1, e2)
+let mk_decl rec_flag name args e =
   let expr = match args with [] -> e | l -> mk_lambda l e in
-  ValueDecl {name; expr}
+  ValueDecl {rec_flag; name; expr}
 
 let mk_binop op a b = App (op, [a;b])
 
@@ -25,15 +25,15 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token UN AFF LIN
 %token UNDERSCORE
 %token DOT
-%token STAR
+%token STAR DIV
 %token EQUAL PLUS MINUS
 %token LPAREN RPAREN
 %token LACCO RACCO
 %token LBRACKPIPE PIPERBRACK
-%token LET IN
+%token LET IN REC MATCH
 %token SEMI
 %token BAR
-%token TYPE VAL CONSTRAINTS
+%token TYPE VAL WITH
 %token RIGHTARROW LEFTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
 %token LESS GREATER
@@ -41,7 +41,7 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token AND
 %token PERCENT
 %token ANDBANG
-
+%token FORALL
 
 %nonassoc IN
 %nonassoc LEFTARROW
@@ -49,7 +49,8 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %nonassoc FUN
 /* %left FUNAPP */
 %left PLUS MINUS
-%right STAR
+%right STAR DIV
+%nonassoc LESS GREATER EQUAL
 /* %nonassoc below_DOT */
 /* %nonassoc DOT */
 %nonassoc
@@ -66,8 +67,8 @@ file: list(command) EOF { $1 }
 toplevel: command SEMISEMI { $1 }
 
 command:
-  | LET name=name args=list(simple_pattern) EQUAL expr=expr
-    { mk_decl name args expr }
+  | LET r=rec_flag name=name args=list(simple_pattern) EQUAL expr=expr
+    { mk_decl r name args expr }
   | VAL name=name DOUBLECOLON typ=type_scheme
     { ValueDef { name ; typ } }
   | typdecl=type_decl { typdecl }
@@ -80,10 +81,12 @@ expr:
      { App (f,List.rev l) }
   | e1=expr op=binop e2=expr
     { mk_binop op e1 e2 }
-  | LET name=name args=nonempty_list(simple_pattern) EQUAL e1=expr IN e2=expr
-    { mk_let name args e1 e2 }
+  | LET r=rec_flag name=name args=nonempty_list(simple_pattern) EQUAL e1=expr IN e2=expr
+    { mk_let r name args e1 e2 }
   | LET p=pattern EQUAL e1=expr IN e2=expr
-    { Let (p, e1, e2) }
+    { Let (NonRec, p, e1, e2) }
+  | MATCH e=expr WITH LACCO l=cases RACCO
+    { Match (e, l) }
   | FUN l=list(simple_pattern) RIGHTARROW body=expr
     { mk_lambda l body }
   | s=simple_expr DOT LPAREN i=expr RPAREN LEFTARROW e=expr
@@ -104,18 +107,31 @@ simple_expr:
   | b=borrow name=name { Borrow (b, name) }
   | s=simple_expr DOT LPAREN i=expr RPAREN { mk_get s i }
 
+cases: ioption(BAR) l=separated_nonempty_list(BAR, case) { l }
+case:
+  p=pattern RIGHTARROW e=expr { p,e }
+
 %inline binop:
-  | PLUS {Constant (Primitive "plus")}
-  | MINUS {Constant (Primitive "minus")}
-  | STAR {Constant (Primitive "mult")}
+  | PLUS {Constant (Primitive "+")}
+  | MINUS {Constant (Primitive "-")}
+  | STAR {Constant (Primitive "*")}
+  | DIV {Constant (Primitive "/")}
+  | LESS {Constant (Primitive ">")}
+  | GREATER {Constant (Primitive "<")}
+  | EQUAL {Constant (Primitive "=")}
+
+%inline rec_flag:
+  | { NonRec }
+  | REC { Rec }
 
 pattern:
   | p=simple_pattern { p }
-  | constr=uname p=pattern { PConstr (constr, p) }
+  | constr=uname p=pattern { PConstr (constr, Some p) }
 
 simple_pattern:
   | v=name { PVar v }
   | LPAREN RPAREN { PUnit }
+  | constr=uname { PConstr (constr, None) }
   | LPAREN p=pattern RPAREN { p }
   | LPAREN l=separated_nontrivial_llist(COMMA,pattern) RPAREN { PTuple l }
 
@@ -159,14 +175,19 @@ constructor_decl:
 
 maybe_constraints:
   | { [] }
-  | CONSTRAINTS c=constraints { c }
+  | WITH c=constraints { c }
 
 type_scheme:
-  | kparams=list(kind_var) params=list(type_quantifier) DOT
+  | p=param_list
     e=type_expr_with_constraint
-    { let constraints, typ = e in
+    { let kparams, params = p in
+      let constraints, typ = e in
       {Ty. kparams; params; constraints; typ}
     }
+
+%inline param_list:
+  | { [], [] }
+  | FORALL kparams=list(kind_var) params=list(type_quantifier) DOT { kparams, params}
 
 type_expr_with_constraint:
   | t=type_expr { ([], t) }

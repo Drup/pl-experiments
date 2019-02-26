@@ -34,10 +34,14 @@ let borrow = function Read -> "" | Write -> "!"
 let rec pattern fmt = function
   | PUnit -> Fmt.pf fmt "()"
   | PVar n -> name fmt n
-  | PConstr (constr, pat) ->
+  | PConstr (constr, None) ->
+    Format.fprintf fmt "%a" name constr
+  | PConstr (constr, Some pat) ->
     Format.fprintf fmt "%a (%a)" name constr pattern pat
   | PTuple l -> 
     Format.fprintf fmt "@[(@ %a@ )@]" Fmt.(list ~sep:(unit ",@ ") pattern) l
+
+let binop = [ "+"; "-"; "*"; "/"; "<"; ">"; "=" ]
 
 let rec expr
   = fun fmt -> function
@@ -53,9 +57,10 @@ let rec expr
       Format.fprintf fmt "@[[|@ %a@ |]@]" Fmt.(list ~sep:(unit ";@ ") expr) a
     | Tuple a ->
       Format.fprintf fmt "@[(@ %a@ )@]" Fmt.(list ~sep:(unit ",@ ") expr) a
-    | App (Constant (Primitive "plus"), [e1; e2]) ->
-      Format.fprintf fmt "@[<2>@[%a@]@ + @[%a@]@]"
+    | App (Constant (Primitive s), [e1; e2]) when List.mem s binop ->
+      Format.fprintf fmt "@[<2>@[%a@]@ %s @[%a@]@]"
         expr_with_paren e1
+        s
         expr_with_paren e2
     | Var v -> name fmt v
     | Borrow (r,v) ->
@@ -64,16 +69,20 @@ let rec expr
       Format.fprintf fmt "@[<2>@[%a@]@ %a@]"
         expr_with_paren f
         Format.(pp_print_list ~pp_sep:pp_print_space expr_with_paren) e
-    (* | Let (n,e1,e2) ->
-     *   Format.fprintf fmt "@[@[<2>%a %a %a@ %a@]@ %a@ %a@]"
-     *     bold "let" name n
-     *     bold "=" expr e1
-     *     bold "in" expr e2 *)
-    | Let (pat,e1,e2) ->
+    | Let (b,pat,e1,e2) ->
       Format.fprintf fmt "@[@[<2>%a %a %a@ %a@]@ %a@ %a@]"
-        bold "let" pattern pat
+        bold (if b = Rec then "let rec" else "let")
+        pattern pat
         bold "=" expr e1
         bold "in" expr e2
+    | Match (e, l) ->
+      let sep = Fmt.cut in
+      let case fmt (p, e) =
+        Fmt.pf fmt "@[<2>| %a ->@ %a@]" pattern p expr e
+      in
+      Fmt.pf fmt "@[<v2>@[%a@ %a@ %a@]@ %a@]"
+        bold "match" expr e bold "in"
+        (Fmt.list ~sep case) l
     | Region e ->
       Fmt.braces expr fmt e
 
@@ -81,7 +90,7 @@ and expr_with_paren fmt x =
   let must_have_paren = match x with
     | App _
     | Let _
-    (* | Match (_, _, _) *)
+    | Match _
     | Lambda _
       -> true
     | Constant _
