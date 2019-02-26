@@ -187,7 +187,6 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let go keep_vars g = 
       g
       |> O.transitive_closure
-      |> edges
       |> ?> unused_variables keep_vars
       |> O.transitive_reduction ~reflexive:true
       |> ?> simplify_with_position keep_vars
