@@ -66,7 +66,7 @@ file: list(command) EOF { $1 }
 toplevel: command SEMISEMI { $1 }
 
 command:
-  | LET name=name args=list(name) EQUAL expr=expr
+  | LET name=name args=list(simple_pattern) EQUAL expr=expr
     { mk_decl name args expr }
   | VAL name=name DOUBLECOLON typ=type_scheme
     { ValueDef { name ; typ } }
@@ -80,11 +80,11 @@ expr:
      { App (f,List.rev l) }
   | e1=expr op=binop e2=expr
     { mk_binop op e1 e2 }
-  | LET name=name args=nonempty_list(name) EQUAL e1=expr IN e2=expr
+  | LET name=name args=nonempty_list(simple_pattern) EQUAL e1=expr IN e2=expr
     { mk_let name args e1 e2 }
   | LET p=pattern EQUAL e1=expr IN e2=expr
     { Let (p, e1, e2) }
-  | FUN l=list(name) RIGHTARROW body=expr
+  | FUN l=list(simple_pattern) RIGHTARROW body=expr
     { mk_lambda l body }
   | s=simple_expr DOT LPAREN i=expr RPAREN LEFTARROW e=expr
     { mk_set s i e }
@@ -110,8 +110,13 @@ simple_expr:
   | STAR {Constant (Primitive "mult")}
 
 pattern:
-  | v=name { PVar v }
+  | p=simple_pattern { p }
   | constr=uname p=pattern { PConstr (constr, p) }
+
+simple_pattern:
+  | v=name { PVar v }
+  | LPAREN RPAREN { PUnit }
+  | LPAREN p=pattern RPAREN { p }
   | LPAREN l=separated_nontrivial_llist(COMMA,pattern) RPAREN { PTuple l }
 
 %inline borrow:

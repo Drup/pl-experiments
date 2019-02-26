@@ -11,13 +11,14 @@ type constant =
 type borrow = Read | Write
 
 type pattern =
+  | PUnit
   | PVar of Name.t
   | PConstr of Name.t * pattern
   | PTuple of pattern list
 
 type expr =
   | Constant of constant
-  | Lambda of Name.t * expr
+  | Lambda of pattern * expr
   | Array of expr list
   | Constructor of Name.t
   | Var of Name.t
@@ -113,6 +114,7 @@ module Rename = struct
   let add n k env = SMap.add n k env
 
   let rec pattern env = function
+    | PUnit -> env, PUnit
     | PVar {name} ->
       let new_name = Name.create ~name () in
       let env = add name new_name env in
@@ -126,11 +128,10 @@ module Rename = struct
       env, PTuple l
   
   let rec expr env = function
-    | Lambda ({name}, e) ->
-      let new_name = Name.create ~name () in
-      let env = add name new_name env in
+    | Lambda (pat, e) ->
+      let env, pat = pattern env pat in
       let e = expr env e in
-      Lambda (new_name, e)
+      Lambda (pat, e)
     | Constructor ({name}) -> Constructor (find name env)
     | Constant _ as e -> e
     | Array l  -> Array (List.map (expr env) l)

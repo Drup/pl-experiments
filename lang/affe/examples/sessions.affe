@@ -1,4 +1,4 @@
-# Session types primitives
+# Either
 
 type ('a: 'k, 'b: 'k) either = Left of 'a | Right of 'b
 val either :
@@ -7,10 +7,12 @@ val either :
   ('b -{'k}> 'r) -{'k}>
   ('a, 'b) either -{'k}> 'r
 
+# Session types primitives
+
 type empty : un
 type ('a : _, 'b: _) st : lin
-type ('a : _) ot : lin # = (empty, 'a) st
-type ('a : _) it : lin # = ('a, empty) st
+# type ('a : _) ot : lin = (empty, 'a) st
+# type ('a : _) it : lin = ('a, empty) st
 
 val receive:
   ('a:_)('b:_)('m:un).
@@ -58,15 +60,15 @@ let math_service ep =
   let b = branch ep in
   either add_service dec_service b
 
-let main2 u =
+let main2 () =
   let (a, b) = create () in
-  let u = math_service a in
+  let () = math_service a in
   let b = select Left b in
   op_client b 1 2
   
-let main2 u =
+let main2 () =
   let (a, b) = create () in
-  let u = math_service a in
+  let () = math_service a in
   let ep = select Right b in
   let ep = send 4 ep in
   let (result, ep) = receive ep in

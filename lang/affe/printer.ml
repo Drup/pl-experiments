@@ -32,6 +32,7 @@ let kname ?(unbound=false) fmt n =
 let borrow = function Read -> "" | Write -> "!"
 
 let rec pattern fmt = function
+  | PUnit -> Fmt.pf fmt "()"
   | PVar n -> name fmt n
   | PConstr (constr, pat) ->
     Format.fprintf fmt "%a (%a)" name constr pattern pat
@@ -45,7 +46,7 @@ let rec expr
     | Lambda (n,e) ->
       Format.fprintf fmt "@[<2>%a %a %a@ %a@]"
         bold "fun"
-        name n
+        pattern n
         bold "->"
         expr e
     | Array a ->

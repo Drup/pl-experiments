@@ -655,17 +655,14 @@ let rec infer (env : Env.t) level = function
   | Constant c -> constant level env c
   | Lambda(param, body_expr) ->
     let _, arrow_k = T.kind ~name:"ar" level in
-    with_type ~name:param.name ~env ~level @@ fun env param_ty param_kind ->
-    let param_scheme = T.tyscheme param_ty in
-    with_binding env param param_scheme @@ fun env ->
+    with_pattern env level false param  @@ fun env param_constr param_ty ->
     let mults, env, constr, return_ty =
       infer env level body_expr
     in
-    let param_constr, mults = Multiplicity.weaken mults param param_kind in
     let constr = normalize_constr env [
         C.denormal constr;
+        C.denormal param_constr;
         Multiplicity.constraint_all mults arrow_k;
-        param_constr
       ]
     in
     mults, env, constr,
@@ -759,6 +756,8 @@ let rec infer (env : Env.t) level = function
     mults, env, constr, return_ty
 
 and infer_pattern env level = function
+  | PUnit ->
+    env, T.True, [], Builtin.unit_ty
   | PVar n ->
     with_type ~name:n.name ~env ~level @@ fun env ty k ->
     env, T.True, [n, ty, k], ty
