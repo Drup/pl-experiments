@@ -105,6 +105,7 @@ simple_expr:
   | LACCO e=expr RACCO { Region e }
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | b=borrow name=name { Borrow (b, name) }
+  | AND b=borrow name=name { ReBorrow (b, name) }
   | s=simple_expr DOT LPAREN i=expr RPAREN { mk_get s i }
 
 cases: ioption(BAR) l=separated_nonempty_list(BAR, case) { l }
@@ -136,8 +137,8 @@ simple_pattern:
   | LPAREN l=separated_nontrivial_llist(COMMA,pattern) RPAREN { PTuple l }
 
 %inline borrow:
-  | AND { Read }
-  | ANDBANG { Write}
+  | AND { Immutable }
+  | ANDBANG { Mutable }
 
 list_expr:
   | simple_expr  { [$1] }

@@ -50,6 +50,9 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   module Set = CCSet.Make(G.V)
   module H = Hashtbl.Make(G.V)
 
+  exception IllegalEdge of K.constant * K.constant
+  exception IllegalBounds of K.constant * K.t * K.constant
+  
   let add_extra_vars map g =
     Map.fold (fun k _ g -> G.add_vertex g k) map g
   
@@ -66,7 +69,15 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
 
   (* O(|V|*|C|) *)
   let lattice_closure g0 =
+    let constant_subgraph =
+      let aux v g = match K.classify v with
+        | `Var -> G.remove_vertex g v
+        | `Constant _ -> g
+      in
+      G.fold_vertex aux g0 g0
+    in
     let c = Check.create g0 in
+    let constant_check = Check.create constant_subgraph in
     let constants, vars =
       let f k (cl,vl) = match K.classify k with
         | `Var -> (cl, k :: vl)
@@ -82,8 +93,14 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
         in
         List.fold_left f ([],[]) constants
       in
-      let g = G.add_edge g (K.constant @@ Lat.least_upper_bound lesser) var in
-      let g = G.add_edge g var (K.constant @@ Lat.greatest_lower_bound greater) in
+      let bound_lesser = Lat.least_upper_bound lesser in
+      let bound_greater = Lat.greatest_lower_bound greater in
+      let node_lesser = K.constant bound_lesser  in
+      let node_greater = K.constant bound_greater in
+      if not (Check.check_path constant_check node_lesser node_greater) then
+        raise (IllegalBounds (bound_lesser, var, bound_greater));
+      let g = G.add_edge g node_lesser var in
+      let g = G.add_edge g var node_greater in
       g
     in
     List.fold_left add_bounds g0 vars
@@ -119,9 +136,6 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
      *   List.fold_left add_minified_edge G.empty edges
      * in *)
     g_minified
-  
-
-  exception FailLattice of K.t * K.t
 
   module Simplify = struct
 
@@ -130,7 +144,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
         match K.classify v1, K.classify v2 with
         | `Constant l1, `Constant l2 ->
           if Lat.(l1 < l2) then g
-          else raise (FailLattice (v1, v2))
+          else raise (IllegalEdge (l1, l2))
         | _ -> G.add_edge g v1 v2
       in
       G.fold_edges cleanup_edge g0 G.empty
@@ -183,7 +197,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       let g = G.remove_vertex g (K.constant Lat.biggest) in
       let g = G.remove_vertex g (K.constant Lat.smallest) in
       g
-
+    
     let go keep_vars g = 
       g
       |> O.transitive_closure

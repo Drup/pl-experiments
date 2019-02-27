@@ -29,7 +29,7 @@ let kname ?(unbound=false) fmt n =
 (* let rname ?(unbound=false) fmt n =
  *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
 
-let borrow = function Read -> "" | Write -> "!"
+let borrow = function Immutable -> "" | Mutable -> "!"
 
 let rec pattern fmt = function
   | PUnit -> Fmt.pf fmt "()"
@@ -48,7 +48,7 @@ let rec expr
     | Constant c -> constant fmt c
     | Constructor c -> name fmt c
     | Lambda (n,e) ->
-      Format.fprintf fmt "@[<2>%a %a %a@ %a@]"
+      Format.fprintf fmt "@[%a %a %a@ %a@]"
         bold "fun"
         pattern n
         bold "->"
@@ -65,6 +65,8 @@ let rec expr
     | Var v -> name fmt v
     | Borrow (r,v) ->
       Format.fprintf fmt "&%s%a" (borrow r) name v
+    | ReBorrow (r,v) ->
+      Format.fprintf fmt "&&%s%a" (borrow r) name v
     | App (f,e) ->
       Format.fprintf fmt "@[<2>@[%a@]@ %a@]"
         expr_with_paren f
@@ -99,6 +101,7 @@ and expr_with_paren fmt x =
     | Constructor _
     | Var _
     | Borrow (_, _)
+    | ReBorrow (_, _)
     | Region _
       -> false
   in
@@ -137,7 +140,7 @@ and kind fmt = function
   | T.KGenericVar n -> kname fmt n
 
 let use fmt (u : Multiplicity.use) = match u with
-  | Shadow -> Fmt.pf fmt "Shadow"
+  | Shadow _ -> Fmt.pf fmt "Shadow"
   | Borrow (b, ks) -> Fmt.pf fmt "&%s(%a)" (borrow b) (Fmt.list kind) ks
   | Normal ks -> Fmt.pf fmt "Use(%a)" (Fmt.list kind) ks
 

@@ -22,13 +22,17 @@ end
 type region = Region.t
 
 module Borrow = struct
-  type t = Syntax.borrow = Read | Write
+  type t = Syntax.borrow =  Immutable | Mutable
   let equal b1 b2 = match b1, b2 with
-    | Read, Read | Write, Write -> true
-    | Read, Write | Write, Read -> false
-  let max a b = match a, b with
-    | Read, Read -> Read
-    | Write, _ | _, Write -> Write
+    | Immutable, Immutable
+    | Mutable, Mutable
+      -> true
+    | _
+      -> false
+  let max b1 b2 = match b1, b2 with
+    | _, Mutable | Mutable, _ -> Mutable
+    | Immutable, Immutable
+      -> Immutable
 end
 
 type kind =

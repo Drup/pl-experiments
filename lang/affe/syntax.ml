@@ -8,7 +8,7 @@ type constant =
    * | Set *)
   | Y
 
-type borrow = Read | Write
+type borrow = Immutable | Mutable
 
 type rec_flag =
   | Rec
@@ -29,6 +29,7 @@ and expr =
   | Constructor of Name.t
   | Var of Name.t
   | Borrow of borrow * Name.t
+  | ReBorrow of borrow * Name.t
   | App of expr * expr list
   (* | Let of Name.t * expr * expr *)
   | Let of rec_flag * pattern * expr * expr
@@ -149,6 +150,7 @@ module Rename = struct
     | Region e -> Region (expr env e)
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
+    | ReBorrow (r, {name}) -> ReBorrow (r, find name env)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
     | Let (b, pat, e1, e2) ->
       let env', pat = pattern env pat in

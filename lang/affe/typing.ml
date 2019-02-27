@@ -18,6 +18,7 @@ let rec is_nonexpansive = function
   | Constructor _
   | Var _
   | Borrow _
+  | ReBorrow _
   | Array []
     -> true
   | Tuple l
@@ -199,7 +200,8 @@ module Kind = struct
       | Un r1, Un r2 -> Region.compare r1 r2 <= 0
       | _, Lin Never -> true
       | Un Global, _ -> true
-      | Un r1, Aff r2 | Un r1, Lin r2 | Aff r1, Lin r2 -> Region.equal r1 r2
+      | Un r1, Aff r2 | Un r1, Lin r2 | Aff r1, Lin r2 ->
+        Region.compare r1 r2 <= 0
       | _ -> false
     let (=) l1 l2 = match l1, l2 with
       | Lin r1, Lin r2
@@ -227,8 +229,13 @@ module Kind = struct
         -> r
     let least_upper_bound = List.fold_left max smallest
     let greatest_lower_bound = List.fold_left min biggest
+    let constants =
+      [ Un Global ; Un Never ;
+        Aff Global ; Aff Never ;
+        Lin Global ; Lin Never ;
+      ]
     let relations consts =
-      let consts = smallest :: biggest :: consts in
+      let consts = constants @ consts in
       CCList.product (fun l r -> l, r) consts consts
       |> CCList.filter (fun (l, r) -> l < r)
   end
@@ -275,7 +282,12 @@ module Kind = struct
 
   let solve ?keep_vars c =
     try solve ?keep_vars c with
-    | FailLattice (k1, k2) -> raise (Fail (k1, k2))
+    | IllegalEdge (k1, k2) -> raise (Fail (K.constant k1, K.constant k2))
+    | IllegalBounds (k1, v, k2) ->
+      fail "The kind inequality %a < %a < %a is not satisfiable."
+        Printer.kind (K.constant k1)
+        Printer.kind v
+        Printer.kind (K.constant k2)
 
   (* let solve ?keep_vars l =
    *   Format.eprintf "@[<2>Solving:@ %a@]@."
@@ -286,9 +298,8 @@ module Kind = struct
    *   l' *)
   
   let un = T.Un Global
-  let aff = T.Aff Global
   let constr = Normal.cleq
-  let first_class k = C.(k <= T.Aff Global)
+  let first_class n k = C.(k <= T.Aff (Region n))
 end
 
 module Simplification = struct
@@ -537,9 +548,7 @@ let rec infer_kind ~level ~env = function
     Instantiate.go_kscheme level @@ Env.find_ty n env
   | T.Var { contents = T.Link ty } ->
     infer_kind ~level ~env ty
-  | T.Borrow (Read, k, _) ->
-    Normal.ctrue, k
-  | T.Borrow (Write, k, _) ->
+  | T.Borrow (_, k, _) ->
     Normal.ctrue, k
 
 and infer_kind_many ~level ~env l = 
@@ -578,7 +587,7 @@ module Unif = struct
     | T.App(ty1, ty_arg1), T.App(ty2, ty_arg2) when Name.equal ty1 ty2 ->
       Normal.cand (List.map2 (unify env) ty_arg1 ty_arg2)
 
-    | T.Borrow (r1, k1, ty1), T.Borrow (r2, k2, ty2) when r1 = r2 ->
+    | T.Borrow (r1, k1, ty1), T.Borrow (r2, k2, ty2) when T.Borrow.equal r1 r2 ->
       Normal.cand [
         Kind.constr k1 k2 ;
         unify env ty1 ty2 ;
@@ -778,10 +787,36 @@ let rec infer (env : Env.t) level = function
 
   | Borrow (r, name) ->
     let _, borrow_k = T.kind ~name:"b" level in
-    let (name, _), env, constr, borrow_ty = infer_var env level name in
+    let (name, _), env, constr, var_ty = infer_var env level name in
+    let bound_k = match r with
+      | Mutable -> T.Aff (Region level)
+      | Immutable ->  T.Un (Region level)
+    in
+    let mults = Multiplicity.borrow name r borrow_k in 
+    let constr = normalize_constr env [
+        C.denormal constr;
+        C.(bound_k <= borrow_k);
+      ]
+    in
+    mults, env, constr, T.Borrow (r, borrow_k, var_ty)
+  | ReBorrow (r, name) ->
+    let _, var_k = T.kind ~name:"v" level in
+    let _, borrow_k = T.kind ~name:"b" level in
+    let (name, _), env, constr, var_ty = infer_var env level name in
+    let bound_k = match r with
+      | Mutable -> T.Aff (Region level)
+      | Immutable ->  T.Un (Region level)
+    in
+    with_type ~name:name.name ~env ~level @@ fun env ty _ ->
+    let borrow_ty = T.Borrow (Mutable, var_k, ty) in
     let mults = Multiplicity.borrow name r borrow_k in
-    mults, env, constr, T.Borrow (r, borrow_k, borrow_ty)
-
+    let constr = normalize_constr env [
+        C.denormal constr;
+        C.(var_ty <== borrow_ty);
+        C.(bound_k <= borrow_k);
+      ]
+    in
+    mults, env, constr, T.Borrow (r, borrow_k, ty)
   | Let (NonRec, pattern, expr, body) ->
     let mults1, env, expr_constr, expr_ty =
       infer env (level + 1) expr
@@ -864,12 +899,12 @@ let rec infer (env : Env.t) level = function
 
   | Region expr ->
     with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
-    let mults, env, constr, infered_ty = infer env level expr in
+    let mults, env, constr, infered_ty = infer env (level+1) expr in
     let mults = Multiplicity.exit_scope mults in 
     let constr = normalize_constr env [
         C.denormal constr;
         C.(infered_ty <== return_ty);
-        Kind.first_class return_kind;
+        Kind.first_class level return_kind;
       ]
     in
     mults, env, constr, return_ty
