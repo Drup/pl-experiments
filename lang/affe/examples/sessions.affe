@@ -1,11 +1,6 @@
 # Either
 
 type ('a: 'k, 'b: 'k) either = Left of 'a | Right of 'b
-val either :
-  'k ('a:_) ('b:_) ('r:_).
-  ('a -{'k}> 'r) ->
-  ('b -{'k}> 'r) -{'k}>
-  ('a, 'b) either -{'k}> 'r
 
 # Session types primitives
 
@@ -15,26 +10,26 @@ type ('a : _, 'b: _) st : lin
 # type ('a : _) it : lin = ('a, empty) st
 
 val receive:
-  ('a:_)('b:_)('m:un).
+  \ ('a:_)('b:_)('m:'k).
 #  ('m * ('a, 'b) st) it -> 'm * ('a, 'b) st
   ('m * ('a, 'b) st, empty) st -> 'm * ('a, 'b) st
 
 val send :
-  ('a:_)('b:_)('m:un).
+  \ ('a:_)('b:_)('m:'k).
 #  'm -> ('m * ('a, 'b) st) ot -> ('b, 'a) st
-  'm -> (empty, 'm * ('a, 'b) st) st -> ('b, 'a) st
+  'm -> (empty, 'm * ('a, 'b) st) st -{'k}> ('b, 'a) st
 
 val create :
-  ('a:_) ('b:_).
+  \ ('a:_) ('b:_).
   unit -> ('a, 'b) st * ('b, 'a) st
 
-val close : . (empty, empty) st -> unit
+val close : (empty, empty) st -> unit
 
 val select :
-  ('a:_)('b:_)('m:_).
+  \ ('a:_)('b:_)('m:_).
   (('a, 'b) st -> 'm) -> (empty, 'm) st -> ('b, 'a) st
 
-val branch : ('m:_). ('m, empty) st -> 'm
+val branch : \ ('m:_). ('m, empty) st -> 'm
 
 # Protocol implementation
 
@@ -58,14 +53,17 @@ let dec_service ep =
 
 let math_service ep =
   let b = branch ep in
-  either add_service dec_service b
+  match b with {
+  | Left x -> add_service x
+  | Right x -> dec_service x
+  }
 
 let main2 () =
   let (a, b) = create () in
   let () = math_service a in
   let b = select Left b in
   op_client b 1 2
-  
+
 let main2 () =
   let (a, b) = create () in
   let () = math_service a in

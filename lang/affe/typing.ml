@@ -868,7 +868,7 @@ let rec infer (env : Env.t) level = function
   | Match (expr, cases) ->
     let mults, env, expr_constrs, match_ty = infer env level expr in
     with_type ~name:"pat" ~env ~level @@ fun env return_ty _ ->
-    let aux case =
+    let aux env case =
       let mults, env, constrs, (pattern, body_ty) =
         infer_lambda env level case
       in
@@ -878,9 +878,9 @@ let rec infer (env : Env.t) level = function
           C.(body_ty <== return_ty);
         ]
       in
-      mults, constrs
+      env, (mults, constrs)
     in
-    let l = List.map aux cases in
+    let env, l = CCList.fold_map aux env cases in
     let reduce (m1,c1) (m2,c2) =
       let mults, mult_c = Multiplicity.parallel_merge m1 m2 in
       let constrs = C.cand [mult_c; c1; C.denormal c2] in
