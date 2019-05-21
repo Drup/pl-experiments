@@ -4,10 +4,24 @@
   (flags --explain --strict)
 )
 
-(executable
+(library
   (name affe)
   (libraries ocamlgraph sequence zoo)
+  (modules :standard \ Affe Affe_www Eval)
   (preprocess (pps ppx_deriving.std))
+  (wrapped false)
+)
+
+(executable
+  (name affe)
+  (modules Affe)
+  (libraries affe zoo_native)
+)
+(executable
+  (name affe_www)
+  (modules Affe_www)
+  (libraries affe zoo_web)
+  (js_of_ocaml)
 )
 
 (alias
