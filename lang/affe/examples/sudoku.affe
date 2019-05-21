@@ -95,16 +95,16 @@ let remove i j g n =
 
 let solve =
   let rec solve i j g =
-    match is_solved g with {
-    | True -> print g
+    match is_solved &g with {
+    | True -> print &g
     | False ->
-      let s = get g (i,j) in
+      let s = get &g (i,j) in
       let (new_i, new_j) = next_pos (i,j) in
       let try_solution n =
-        let new_g = set g (i,j) (singleton n) in
+        let new_g = set &g (i,j) (singleton n) in
         let () = { remove i j &!new_g n } in
         match { is_valid &new_g } with {
-        | True -> { solve new_i new_j &new_g }
+        | True -> { solve new_i new_j new_g }
         | False -> ()
         }
       in

@@ -1,14 +1,14 @@
 # type ('a : 'k) t : aff = 'a array
 
-let get x i =
+let get (x, i) =
   x.(i)
 
 let copy a =
   array_init (array_length a) (fun i -> a.(i))
 
-let set a i x =
+let set (a, i, x) =
   let a2 = copy a in
   let x = {(&!a2).(i) <- x} in
   a2
 
-let set_mut a i x = a.(i) <- x
+let set_mut (a, i, x) = a.(i) <- x

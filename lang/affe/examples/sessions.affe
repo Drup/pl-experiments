@@ -1,13 +1,20 @@
-# Either
+# Session types
+#
+# This follow the encoding by Luca Padovani in
+# A simple library implementation of binary sessions
+# See http://www.di.unito.it/~padovani/Software/FuSe/FuSe.html
 
+# The either type is useful for choices
 type ('a: 'k, 'b: 'k) either = Left of 'a | Right of 'b
 
-# Session types primitives
+# Our session type primitives  
+# These should be defined in term of lower level network primitives.
+# Here, we just state them without any implemnetation
 
 type empty : un
-type ('a : _, 'b: _) st : lin
 # type ('a : _) ot : lin = (empty, 'a) st
 # type ('a : _) it : lin = ('a, empty) st
+type ('a : _, 'b: _) st : lin # This is the only linearity annotation in the whole file
 
 val receive:
   \ ('a:_)('b:_)('m:'k).
@@ -32,6 +39,7 @@ val select :
 val branch : \ ('m:_). ('m, empty) st -> 'm
 
 # Protocol implementation
+# These directly follow the basic examples.
 
 let op_client ep x y =
   let ep = send x ep in
@@ -40,7 +48,7 @@ let op_client ep x y =
   let u = close ep in
   result
 
-let add_service ep =
+let add_service ep1 =
   let (x, ep) = receive ep in
   let (y, ep) = receive ep in
   let ep = send (x + y) ep in
@@ -58,7 +66,7 @@ let math_service ep =
   | Right x -> dec_service x
   }
 
-let main2 () =
+let main1 () =
   let (a, b) = create () in
   let () = math_service a in
   let b = select Left b in
@@ -70,5 +78,5 @@ let main2 () =
   let ep = select Right b in
   let ep = send 4 ep in
   let (result, ep) = receive ep in
-  let u = close ep in
+  let () = close ep in
   result
