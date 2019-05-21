@@ -1,7 +1,13 @@
 open Syntax
 module T = Types
 
-let bold fmt s = Format.fprintf fmt "@<0>%s%s@<0>%s" "\027[1m" s "\027[0m"
+let debug = ref false
+
+let bold =
+  if !debug then
+    fun fmt s -> Format.fprintf fmt "@<0>%s%s@<0>%s" "\027[1m" s "\027[0m"
+  else
+    Fmt.string
 
 let constant fmt = function
   | Int i -> Format.pp_print_int fmt i
@@ -19,8 +25,12 @@ let rec digits fmt i =
     Format.pp_print_string fmt indice_array.(i mod 10)
   end
 
-let name fmt {Name. name ; id } =
+let name_with_digits fmt {Name. name ; id } =
   Format.fprintf fmt "%s%a" name  digits id
+let name_no_digits fmt {Name. name ; _ } =
+  Format.fprintf fmt "%s" name
+
+let name = if !debug then name_with_digits else name_no_digits
 
 let tyname ?(unbound=false) fmt n =
   Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
