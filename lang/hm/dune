@@ -3,7 +3,7 @@
 
 (executable
   (name hm)
-  (libraries zoo)
+  (libraries zoo_native)
 )
 
 (alias

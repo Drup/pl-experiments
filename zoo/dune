@@ -1,0 +1,6 @@
+(library
+ (name zoo)
+ (virtual_modules zoo)
+ (wrapped false)
+ (libraries fmt containers)
+)

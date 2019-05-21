@@ -1,0 +1,5 @@
+(library
+ (name zoo_native)
+ (implements zoo)
+ (libraries unix linenoise)
+)
