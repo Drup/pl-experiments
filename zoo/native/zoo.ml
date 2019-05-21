@@ -222,6 +222,8 @@ struct
           done
       with End_of_file -> ()
 
+  let load_files _ = ()
+
   (** Main program *)
   let main () =
     LNoise.set_multiline true;

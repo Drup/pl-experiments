@@ -127,7 +127,7 @@ struct
     let s = Js_of_ocaml.Js.to_string s in
     begin try
         Zoo_web.clear_term ();
-        Zoo_web.add_to_term "(* Starting eval *)\n";
+        Zoo_web.add_to_term "(* Starting typing *)\n";
         let _ = use_file L.initial_environment (name, s) in
         ()
       with
@@ -135,9 +135,20 @@ struct
       | _e ->
         error "Uncaught exception"
     end ;
-    Zoo_web.add_to_term "(* Finished eval *)\n";
+    Zoo_web.add_to_term "(* Finished typing *)\n";
     ()
 
+  let load_files l =
+    let open Js_of_ocaml_tyxml.Tyxml_js in
+    
+    let elem s =
+      Html.(li [a ~a:[a_class ["file"]; a_href "#"; a_title s;
+                  a_onclick (fun _ -> Zoo_web.load_file s; false);]
+              [txt s]])
+    in
+    let l = Html.ul (List.map elem l) in
+    Register.id ~keep:true "examples" [l]
+  
   let main () =
     Zoo_web.set_lang_name L.name;
     Js_of_ocaml.Js.export "Affe" (object%js
