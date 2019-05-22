@@ -5,11 +5,13 @@ For a more stable and pedagogic collection, please consult the [plzoo](http://an
 
 ## The languages
 
-- [Affe](lang/affe/) https://drup.github.io/pl-experiments/affe/
+- [Affe](lang/affe/) [**online demo**](https://drup.github.io/pl-experiments/affe/)
+
   An ML language with affine/linear type system.
   Only the type system is implemented
   
 - [HM](lang/hm)
+
   ML-like language with side-effects
   A run-of-the-mill hindley milner in the style of HM(X)
   Contains a big-step evaluator
