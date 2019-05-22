@@ -5,7 +5,7 @@ For a more stable and pedagogic collection, please consult the [plzoo](http://an
 
 ## The languages
 
-### [Affe](lang/affe/) [**Try the online demo here!**](https://drup.github.io/pl-experiments/affe/)
+### [Affe](lang/affe/) --- [**Try the online demo here!**](https://drup.github.io/pl-experiments/affe/)
 
 An ML language with affine/linear type system, kinds and a borrow system.
 Only the type system is implemented.
