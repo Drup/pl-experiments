@@ -1,0 +1,7 @@
+type channel : lin
+val create : unit -> channel
+val close : channel -> unit
+
+let main =
+  let c = create () in
+  ()

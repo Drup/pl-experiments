@@ -137,17 +137,18 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
      * in *)
     g_minified
 
-  module Simplify = struct
 
-    let edges g0 =
-      let cleanup_edge v1 v2 g =
-        match K.classify v1, K.classify v2 with
-        | `Constant l1, `Constant l2 ->
-          if Lat.(l1 < l2) then g
-          else raise (IllegalEdge (l1, l2))
-        | _ -> G.add_edge g v1 v2
-      in
-      G.fold_edges cleanup_edge g0 G.empty
+  let check_constants g0 =
+    let cleanup_edge v1 v2 g =
+      match K.classify v1, K.classify v2 with
+      | `Constant l1, `Constant l2 ->
+        if Lat.(l1 < l2) then g
+        else raise (IllegalEdge (l1, l2))
+      | _ -> G.add_edge g v1 v2
+    in
+    G.fold_edges cleanup_edge g0 G.empty
+  
+  module Simplify = struct
 
     let unused_variables vars g0 =
       let cleanup_vertex v g =
@@ -219,6 +220,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
+    |> check_constants
     |> Simplify.go keep_vars
     |> to_normal
 

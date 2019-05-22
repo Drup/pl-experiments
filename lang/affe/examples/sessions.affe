@@ -48,7 +48,7 @@ let op_client ep x y =
   let u = close ep in
   result
 
-let add_service ep1 =
+let add_service ep =
   let (x, ep) = receive ep in
   let (y, ep) = receive ep in
   let ep = send (x + y) ep in
