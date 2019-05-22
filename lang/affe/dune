@@ -21,6 +21,7 @@
   (name affe_www)
   (modules Affe_www)
   (libraries affe zoo_web)
+  (preprocess (pps tyxml-ppx))
   (js_of_ocaml)
 )
 

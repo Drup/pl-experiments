@@ -4,7 +4,7 @@ open Parser
 
 rule token = parse
   | [' ' '\t']     { token lexbuf }     (* skip blanks *)
-  | '#' [^ '\n']* '\n' 
+  | '#' [^'\n']* '\n' 
   | '\n' { Lexing.new_line lexbuf ; token lexbuf } 
   | '-'?[ '0'-'9' ]+ as x	{INT (int_of_string x)}
   | "Y" { YTOK }
@@ -50,7 +50,7 @@ rule token = parse
   | "lin" { LIN }
   | ';' { SEMI }
   | ";;"	{ SEMISEMI }
-  | eof	{ EOF }
+  | ('#' [^'\n']*)? eof { EOF }
   | "'" ( '_'? [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]+ as s)  { TYIDENT s }
   | ( '_'? [ 'a'-'z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { IDENT s }
   | ( '_'? [ 'A'-'Z' ] [ 'A'-'Z' 'a'-'z' '0'-'9' '_' '\'' ]*) as s  { UIDENT s }
