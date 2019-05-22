@@ -1,6 +1,20 @@
 # My PL experiments
 
-If it's here, it's probably buggy and unfinished. See [plzoo](http://andrej.com/plzoo/) for pedagogic implementations.
+A collection of personal PL research and experiments.
+For a more stable and pedagogic collection, please consult the [plzoo](http://andrej.com/plzoo/).
+
+## The languages
+
+- [Affe](lang/affe/) https://drup.github.io/pl-experiments/affe/
+  An ML language with affine/linear type system.
+  Only the type system is implemented
+  
+- [HM](lang/hm)
+  ML-like language with side-effects
+  A run-of-the-mill hindley milner in the style of HM(X)
+  Contains a big-step evaluator
+
+## How to use
 
 `dune exec lang/<lang>/<lang>.exe` to launch the toplevel for `<lang>`
 
