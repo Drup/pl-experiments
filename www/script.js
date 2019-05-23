@@ -30,7 +30,7 @@ $(function() {
 
     term = CodeMirror(document.getElementById("term"), {
         lineWrapping   : true,
-        readOnly       : "nocursor",
+        readOnly       : false,
         theme          : "solarized",
         scrollbarStyle : "simple"
     });

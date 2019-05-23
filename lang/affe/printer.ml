@@ -33,9 +33,11 @@ let name_no_digits fmt {Name. name ; _ } =
 let name = if !debug then name_with_digits else name_no_digits
 
 let tyname ?(unbound=false) fmt n =
-  Format.fprintf fmt "'%s%a" (if unbound then "_" else "") name n
+  Format.fprintf fmt "'%s%a" (if unbound then "_" else "")
+    name_with_digits n
 let kname ?(unbound=false) fmt n =
-  Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n
+  Format.fprintf fmt "^%s%a" (if unbound then "_" else "")
+    name_with_digits n
 (* let rname ?(unbound=false) fmt n =
  *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
 
