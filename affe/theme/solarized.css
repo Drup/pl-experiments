@@ -63,6 +63,11 @@ http://ethanschoonover.com/solarized/img/solarized-palette.png
 .cm-s-solarized .cm-operator { color: #6c71c4; }
 
 .cm-s-solarized .cm-comment { color: #586e75; font-style:italic; }
+.cm-s-solarized .cm-comment-2 {
+    font-size:120%;
+    color: #88AAB5;
+    font-style:italic;
+}
 
 .cm-s-solarized .cm-string { color: #859900; }
 .cm-s-solarized .cm-string-2 { color: #b58900; }
