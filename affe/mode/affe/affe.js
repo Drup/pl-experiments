@@ -22,7 +22,7 @@ var op = [
     "*", "/", "+", "-", "%", ">", "<", "->", "<-", "\\"
 ];
 var op2 = [
-    "-{", "}>", "{", "}", "&&!", "&&", "&!", "&"
+    "-{", "}>", "&&!", "&&", "&!", "&"
 ];
 
 function mkre (l) {
@@ -42,13 +42,13 @@ var mode = {
         {regex: /\#.*/, token: "comment"},
         {regex: new RegExp (mkre(keywords) + '\\b'), token: "keyword"},
         {regex: new RegExp (mkre(op2)), token: "builtin"},
-        {regex: new RegExp (mkre(op))},
+        {regex: new RegExp (mkre(op)), token: "operator"},
         {regex: /"(?:[^\\]|\\.)*?(?:"|$)/, token: "string"},
         
         // A next property will cause the mode to move to a different state
         // indent and dedent properties guide autoindentation
-        {regex: /[\{\[\(]/, indent: true},
-        {regex: /[\}\]\)]/, dedent: true},
+        {regex: /[\{\[\(]/, token: "bracket", indent: true},
+        {regex: /[\}\]\)]/, token: "bracket", dedent: true},
         {regex: new RegExp(smallRE), token: "variable"},
         {regex: new RegExp(largeRE), token: "variable-2"},
         {regex: new RegExp(tyRE), token: "type"},
