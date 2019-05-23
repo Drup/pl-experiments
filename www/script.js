@@ -18,7 +18,6 @@ $(function() {
     edit = CodeMirror(document.getElementById("edit"), {
         lineNumbers    : true,
         lineWrapping   : true,
-        styleActiveLine: true,
         theme          : "solarized",
         scrollbarStyle : "simple"
     });
