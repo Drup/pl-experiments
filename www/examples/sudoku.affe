@@ -1,4 +1,4 @@
-# Sudoku solver
+## Sudoku solver
 #
 # One efficient way to represent a sudoku board is to use a matrix
 # where each cell contains a set of acceptable integers.
@@ -7,7 +7,7 @@
 # Unfortunately, solving sudoku might ocasionally involve some
 # backtracking. At this point, the board must be copied.
 
-# 1 We state the various primitive functions we need
+## 1 We state the various primitive functions we need
 val array_init : 
   \ 'k ('a : _). int -> (int -{'k}> 'a) -{'k}> 'a array
 val array_length : \ 'k ('a:_). &('k, 'a array) -> int
@@ -19,7 +19,7 @@ val array_set : \ 'k ('a:_). &!('k, 'a array) * int * 'a -> unit
 val not : bool -> bool
 val and : bool -> bool -> bool
 
-# 2 We import the hybrid arrays (see cow.affe for more details)
+## 2 We import the hybrid arrays (see cow.affe for more details)
 let get (x, i) = x.(i)
 let copy a = array_init (array_length a) (fun i -> a.(i))
 let set (a, i, x) =
@@ -28,7 +28,7 @@ let set (a, i, x) =
   a2
 let set_mut (a, i, x) = a.(i) <- x
 
-# 3 We state a notion of integer sets
+## 3 We state a notion of integer sets
 
 type intset
 val empty : intset
@@ -38,7 +38,7 @@ val iter_set : \ 'k . (int -{'k}> unit) -> intset -{'k}> unit
 val cardinal : intset -> int
 val print : \ 'k . &('k,intset array) -> unit
 
-# 4 Various utilities functions
+## 4 Various utilities functions
 
 # Size of the board
 let size = 9
@@ -59,7 +59,7 @@ let for =
   }
   in aux
 
-# 5 Finally, we can solve the sudoku!
+## 5 Finally, we can solve the sudoku!
 
 # A full cell with all numbers from 1 to 9
 let full_cell =
@@ -108,7 +108,7 @@ let remove_square i0 j0 g n =
     )
   )
 
-# Finally, the general function that propagate solving decisions.
+# The general function that propagate solving decisions.
 # Note the reuse of the mutable borrow in sequence. 
 # This is perfectly allowed, since no reference to the borrow
 # is kept.
@@ -130,7 +130,7 @@ let next_pos (i, j) =
   | False -> (i + 1, 0)
 }
 
-# Finally, the recursive function that solves the sudoku.
+# The recursive function that solves the sudoku.
 # It walks over each cell, branches off by picking
 # one of the possible number for that cell, doing an
 # immutable modification of the cell, propagating the change,
