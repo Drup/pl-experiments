@@ -37,6 +37,8 @@ var intRE   = /[0-9]+/;
 var mode = {
     // The start state contains the rules that are intially used
     start: [
+        {regex: /\(\*/, token: "comment", next: "comment"},
+        {regex: /\#.*/, token: "comment"},
         {regex: new RegExp (mkre(keywords) + '\\b'), token: "keyword"},
         {regex: new RegExp (mkre(op2)), token: "builtin"},
         {regex: new RegExp (mkre(op))},
@@ -50,8 +52,6 @@ var mode = {
         {regex: new RegExp(largeRE), token: "variable-2"},
         {regex: new RegExp(tyRE), token: "variable-3"},
         {regex: new RegExp(intRE, 'i'), token: "number"},
-        {regex: /\(\*/, token: "comment", next: "comment"},
-        {regex: /\#.*/, token: "comment"},
     ],
     // The multi-line comment state.
     comment: [
