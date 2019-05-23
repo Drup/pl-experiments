@@ -29,7 +29,7 @@ function mkre (l) {
     return '(?:' + l.map(RegExpPrepare).join('|') + ')'
 };
 
-var tyRE = /['^][a-z_'A-Z0-9]*/;
+var tyRE = /['^][a-z_'A-Z0-9]*[₀₁₂₃₄₅₆₇₈₉]*/u;
 var smallRE = /[a-z_][a-z_'A-Z0-9]*/;
 var largeRE = /[A-Z][a-z_'A-Z0-9]*/;
 var intRE   = /[0-9]+/;
