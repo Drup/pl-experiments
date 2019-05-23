@@ -3,6 +3,7 @@ var edit = undefined;
 var term = undefined;
 
 function loadfile(fn) {
+    window.location.hash = fn;
     dir = "examples/";
     filename = fn;
     $.ajax({
@@ -36,7 +37,9 @@ $(function() {
     });
 
     // Loading default file in the editor.
-    loadfile("intro.affe");
+    var s = location.hash.substring(1) ;
+    if (s === "") { s = "intro.affe"; };
+    loadfile(s);
 
     // Making things resizable.
     $( "#west" ).resizable({
