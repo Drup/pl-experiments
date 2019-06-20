@@ -1,0 +1,13 @@
+type key
+type data
+type btree : aff
+
+val get : &(_,btree) -> key -> data
+val set : &!(_,btree) -> key -> data -> unit
+
+val open : filename -> btree
+val close : btree -> unit
+
+val split : \ 'k . &!('k,btree) -> &!('k,btree) * value * data * &!('k, btree)
+
+type ('a, 'k) iter : 'k = ('a -> unit) -{'k}> unit
