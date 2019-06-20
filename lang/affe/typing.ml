@@ -27,7 +27,7 @@ let rec is_nonexpansive = function
   | Region (_, e) -> is_nonexpansive e
   | Let (_, _, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
-  | Match (e, l) ->
+  | Match (_, e, l) ->
     is_nonexpansive e &&
     List.for_all (fun (_, e) -> is_nonexpansive e) l
   | App (_, _)
@@ -623,6 +623,28 @@ module Unif = struct
 
 end
 
+module Pat_modifier = struct
+
+  type t =
+    | Direct
+    | Borrow of borrow * T.kind
+
+  let app m t = match m with
+    | Direct -> t
+    | Borrow (b, k0) -> T.Borrow (b,k0,t)
+
+  let with_kind m (t,k) = match m with
+    | Direct -> (t,k)
+    | Borrow (b, k0) -> T.Borrow (b,k0,t), k0
+
+  let from_match_spec ~level : Syntax.match_spec -> _ = function
+    | None -> Direct
+    | Some b ->
+      let _, k = T.kind ~name:"k" level in
+      Borrow (b,k)
+  
+end
+
 let normalize_constr env l =
   let rec unify_all = function
     | T.Eq (t1, t2) -> Unif.unify env t1 t2
@@ -705,20 +727,26 @@ let rec infer_pattern env level = function
     let ty = T.Tuple tys in
     env, constrs, params, ty
 
-and with_pattern env level generalize pat k =
+and with_pattern
+    ?(pat_modifier=Pat_modifier.Direct) env level generalize pat kont =
   let env, constr, params, pat_ty = infer_pattern env level pat in
   let constr = normalize_constr env [constr] in
-  
+  let input_ty = Pat_modifier.app pat_modifier pat_ty in
+  let params =
+    let f (n,t,k) =
+      let (t,k) = Pat_modifier.with_kind pat_modifier (t,k) in (n, t, k)
+    in List.map f params
+  in
   let tys = List.map (fun (_,t,_) -> t) params in
   let env, constr, schemes = Generalize.typs env level generalize constr tys in
-  let rec with_bindings env (params, schemes) k = match (params, schemes) with
-    | [],[] -> k env constr pat_ty
+  let rec with_bindings env (params, schemes) kont = match (params, schemes) with
+    | [],[] -> kont env constr input_ty
     | (name, _, _)::params, scheme::schemes ->
       with_binding env name scheme @@ fun env ->
-      with_bindings env (params, schemes) k
+      with_bindings env (params, schemes) kont
     | _ -> assert false
   in
-  let mults, env, constrs, ty = with_bindings env (params, schemes) k in
+  let mults, env, constrs, ty = with_bindings env (params, schemes) kont in
   let mults, weaken_consts =
     List.fold_left (fun (m, c') (n,_,k) ->
         let c, m = Multiplicity.exit_binder m n k in m, C.(c &&& c'))
@@ -865,12 +893,13 @@ let rec infer (env : Env.t) level = function
     fail "Such patterns are not allowed on the left hand side of a let rec@ %a"
       Printer.pattern p
 
-  | Match (expr, cases) ->
+  | Match (match_spec, expr, cases) ->
     let mults, env, expr_constrs, match_ty = infer env level expr in
     with_type ~name:"pat" ~env ~level @@ fun env return_ty _ ->
+    let pat_modifier = Pat_modifier.from_match_spec ~level match_spec in
     let aux env case =
       let mults, env, constrs, (pattern, body_ty) =
-        infer_lambda env level case
+        infer_lambda ~pat_modifier env level case
       in
       let constrs = normalize_constr env [
           C.denormal constrs;
@@ -910,8 +939,9 @@ let rec infer (env : Env.t) level = function
     in
     mults, env, constr, return_ty
 
-and infer_lambda env level (pattern, body_expr) =
-  with_pattern env level false pattern @@ fun env param_constr param_ty ->
+and infer_lambda ?pat_modifier env level (pattern, body_expr) =
+  with_pattern ?pat_modifier env level false pattern @@
+  fun env param_constr input_ty ->
   let mults, env, constr, return_ty =
     infer env level body_expr
   in
@@ -920,7 +950,7 @@ and infer_lambda env level (pattern, body_expr) =
       C.denormal param_constr;
     ]
   in
-  mults, env, constr, (param_ty, return_ty)
+  mults, env, constr, (input_ty, return_ty)
   
 and infer_var env level name =
   let env, constr1, t = instantiate level env @@ Env.find name env in

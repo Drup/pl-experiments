@@ -39,7 +39,9 @@ rule token = parse
   | "type" { TYPE }
   | "val" { VAL }
   | "with" { WITH }
-  | "match" { MATCH }
+  | "match" { MATCH None }
+  | "match&" { MATCH (Some Immutable) }
+  | "match&!" { MATCH (Some Mutable) }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
   | "for all" | "\\" { FORALL }

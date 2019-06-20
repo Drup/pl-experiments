@@ -30,7 +30,8 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %token LPAREN RPAREN
 %token LACCO RACCO
 %token LBRACKPIPE PIPERBRACK
-%token LET IN REC MATCH
+%token LET IN REC
+%token <Syntax.match_spec> MATCH
 %token SEMI
 %token BAR
 %token TYPE VAL WITH
@@ -85,8 +86,8 @@ expr:
     { mk_let r name args e1 e2 }
   | LET p=pattern EQUAL e1=expr IN e2=expr
     { Let (NonRec, p, e1, e2) }
-  | MATCH e=expr WITH LACCO l=cases RACCO
-    { Match (e, l) }
+  | b=MATCH e=expr WITH LACCO l=cases RACCO
+    { Match (b,e, l) }
   | FUN l=list(simple_pattern) RIGHTARROW body=expr
     { mk_lambda l body }
   | s=simple_expr DOT LPAREN i=expr RPAREN LEFTARROW e=expr

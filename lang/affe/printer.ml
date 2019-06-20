@@ -89,13 +89,18 @@ let rec expr
         pattern pat
         bold "=" expr e1
         bold "in" expr e2
-    | Match (e, l) ->
+    | Match (b, e, l) ->
       let sep = Fmt.cut in
       let case fmt (p, e) =
         Fmt.pf fmt "@[<2>| %a ->@ %a@]" pattern p expr e
       in
+      let s = match b with
+        | None -> ""
+        | Some Immutable -> "&"
+        | Some Mutable -> "&!"
+      in
       Fmt.pf fmt "@[<v2>@[%a@ %a@ %a@]@ %a@]"
-        bold "match" expr e bold "in"
+        bold ("match"^s) expr e bold "in"
         (Fmt.list ~sep case) l
     | Region (v, e) ->
       let pp fmt (v, e) = Fmt.pf fmt "%a | %a" name v expr e in

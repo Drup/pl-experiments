@@ -10,6 +10,8 @@ type constant =
 
 type borrow = Immutable | Mutable
 
+type match_spec = borrow option
+
 type rec_flag =
   | Rec
   | NonRec
@@ -33,7 +35,7 @@ and expr =
   | App of expr * expr list
   (* | Let of Name.t * expr * expr *)
   | Let of rec_flag * pattern * expr * expr
-  | Match of expr * lambda list
+  | Match of match_spec * expr * lambda list
   | Region of Name.t * expr
   | Tuple of expr list
 
@@ -157,10 +159,10 @@ module Rename = struct
       let e1 = expr (if b = Rec then env' else env) e1 in
       let e2 = expr env' e2 in
       Let (b, pat, e1, e2)
-    | Match (e, l) ->
+    | Match (b, e, l) ->
       let e = expr env e in
       let l = List.map (lambda env) l in
-      Match (e, l)
+      Match (b, e, l)
     (* | Let ({name}, e1, e2) ->
      *   let e1 = expr env e1 in
      *   let new_name = Name.create ~name () in
