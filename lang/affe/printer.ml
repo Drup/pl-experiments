@@ -97,8 +97,9 @@ let rec expr
       Fmt.pf fmt "@[<v2>@[%a@ %a@ %a@]@ %a@]"
         bold "match" expr e bold "in"
         (Fmt.list ~sep case) l
-    | Region e ->
-      Fmt.braces expr fmt e
+    | Region (v, e) ->
+      let pp fmt (v, e) = Fmt.pf fmt "%a | %a" name v expr e in
+      Fmt.braces pp fmt (v,e)
 
 and expr_with_paren fmt x =
   let must_have_paren = match x with
@@ -151,7 +152,7 @@ and kind fmt = function
   | T.KVar { contents = x } -> kvar fmt x
   | T.KGenericVar n -> kname fmt n
 
-let use fmt (u : Multiplicity.use) = match u with
+let use fmt (u : Types.Use.t) = match u with
   | Shadow _ -> Fmt.pf fmt "Shadow"
   | Borrow (b, ks) -> Fmt.pf fmt "&%s(%a)" (borrow b) (Fmt.list kind) ks
   | Normal ks -> Fmt.pf fmt "Use(%a)" (Fmt.list kind) ks

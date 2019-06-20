@@ -1,31 +1,33 @@
-module T = Types
+open Types
+open Use
 
-type use =
-  | Shadow of T.Borrow.t
-  | Borrow of (T.Borrow.t * T.kind list)
-  | Normal of T.kind list
-type t = use Name.Map.t
+type t = Use.t Name.Map.t
 let empty = Name.Map.empty
 let var x k = Name.Map.singleton x (Normal [k])
 let borrow x r k = Name.Map.singleton x (Borrow (r, [k]))
 
-exception Fail of Name.t * use * use
+exception Fail of Name.t * Use.t * Use.t
+exception FailRegion of Name.t * Use.t
 let fail n u1 u2 = raise (Fail (n, u1, u2))
 
 let constr_all_kinds ~bound ks =
   List.map (fun k -> Constraint.(k <= bound)) ks
+let bound_all_kinds f n ks =
+  CCList.flat_map
+    (fun k -> Constraint.[f (Region.Region n) <= k; k <= f Region.Never])
+    ks
 
 let merge (e1 : t) (e2 : t) =
   let constr = ref [] in
-  let bound = T.Un Never in
+  let bound = Un Never in
   let constr_kinds ks =
     constr := (constr_all_kinds ~bound ks) @ !constr
   in
   let aux x u1 u2 = match u1, u2 with
     | Shadow _, u -> Some u
-    | Borrow (Immutable as r, k1), Borrow (Immutable, k2)
+    | Borrow (Immutable, k1), Borrow (Immutable, k2)
       ->
-      Some (Borrow (r, k1@k2))
+      Some (Borrow (Immutable, k1@k2))
     | Normal l1, Normal l2 ->
       let l = l1 @ l2 in
       constr_kinds l ;
@@ -45,12 +47,12 @@ let parallel_merge  (e1 : t) (e2 : t) =
    * in *)
   let aux x u1 u2 = match u1, u2 with
     | Shadow r1, Shadow r2 ->
-      Some (Shadow (T.Borrow.max r1 r2))
+      Some (Shadow (Borrow.max r1 r2))
     | Shadow r', Borrow (r,l)
     | Borrow (r, l), Shadow r'
       ->
       (* constr_kinds ~bound:(Aff Never) l ; *)
-      Some (Borrow (T.Borrow.max r r', l))
+      Some (Borrow (Borrow.max r r', l))
     | Borrow (Immutable as r, k1), Borrow (Immutable, k2)
     | Borrow (Mutable as r, k1), Borrow (Mutable, k2)
       ->
@@ -70,7 +72,7 @@ let parallel_merge  (e1 : t) (e2 : t) =
   let m = Name.Map.union aux e1 e2 in
   m, Constraint.T.True
 
-let constraint_all (e : t) bound : T.constr =
+let constraint_all (e : t) bound : constr =
   let aux _ ks l = match ks with
     | Normal ks -> constr_all_kinds ~bound ks @ l
     | Borrow _ | Shadow _ -> []
@@ -78,20 +80,32 @@ let constraint_all (e : t) bound : T.constr =
   let l = Name.Map.fold aux e [] in
   Constraint.cand l
 
-let exit_scope (e : t) =
-  let aux u = match u with
-    | Borrow (r,_) -> Shadow r
-    | _ -> u
+let exit_region x0 n (m : t) =
+  let constr = ref [] in
+  let constr_kinds ks f =
+    constr := (bound_all_kinds f n ks) @ !constr
   in
-  Name.Map.map aux e
+  let m = Name.Map.update x0 (function
+      | None -> None
+      | Some Borrow (Mutable, ks) ->
+        constr_kinds ks (fun r -> Aff r);
+        Some (Shadow Mutable)
+      | Some Borrow (Immutable, ks) ->
+        Fmt.epr "%a@." (Fmt.list Printer.kind) ks ;
+        constr_kinds ks (fun r -> Un r);
+        Some (Shadow Immutable)
+      | Some b -> raise (FailRegion (x0,b)))
+      m
+  in
+  m, Constraint.cand !constr
 
-let weaken (e : t) x k : T.constr * t =
+let exit_binder (e : t) x k : constr * t =
   let constr = match Name.Map.find_opt x e with
     | Some Shadow _
     | Some Borrow _
     | Some Normal [_]
-      -> T.True
+      -> True
     | None | Some Normal [] | Some Normal _ ->
-      Constraint.(k <= T.Aff Never)
+      Constraint.(k <= Aff Never)
   in
   constr, Name.Map.remove x e

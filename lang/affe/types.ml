@@ -162,3 +162,12 @@ module Free_vars = struct
       Name.Set.empty
       l
 end
+
+module Use = struct
+  
+  type t =
+    | Shadow of Borrow.t
+    | Borrow of (Borrow.t * kind list)
+    | Normal of kind list
+
+end

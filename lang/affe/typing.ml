@@ -24,7 +24,7 @@ let rec is_nonexpansive = function
   | Tuple l
   | App (Constructor _, l) ->
     List.for_all is_nonexpansive l
-  | Region e -> is_nonexpansive e
+  | Region (_, e) -> is_nonexpansive e
   | Let (_, _, e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
   | Match (e, l) ->
@@ -299,7 +299,7 @@ module Kind = struct
   
   let un = T.Un Global
   let constr = Normal.cleq
-  let first_class n k = C.(k <= T.Aff (Region n))
+  let first_class n k = C.(k <= T.Lin (Region n))
 end
 
 module Simplification = struct
@@ -721,7 +721,7 @@ and with_pattern env level generalize pat k =
   let mults, env, constrs, ty = with_bindings env (params, schemes) k in
   let mults, weaken_consts =
     List.fold_left (fun (m, c') (n,_,k) ->
-        let c, m = Multiplicity.weaken m n k in m, C.(c &&& c'))
+        let c, m = Multiplicity.exit_binder m n k in m, C.(c &&& c'))
       (mults, T.True) params
   in
   let constrs = normalize_constr env [
@@ -788,14 +788,14 @@ let rec infer (env : Env.t) level = function
   | Borrow (r, name) ->
     let _, borrow_k = T.kind ~name:"b" level in
     let (name, _), env, constr, var_ty = infer_var env level name in
-    let bound_k = match r with
-      | Mutable -> T.Aff (Region level)
-      | Immutable ->  T.Un (Region level)
-    in
+    (* let bound_k = match r with
+     *   | Mutable -> T.Aff (Region level)
+     *   | Immutable ->  T.Un (Region level)
+     * in *)
     let mults = Multiplicity.borrow name r borrow_k in 
     let constr = normalize_constr env [
         C.denormal constr;
-        C.(bound_k <= borrow_k);
+        (* C.(bound_k <= borrow_k); *)
       ]
     in
     mults, env, constr, T.Borrow (r, borrow_k, var_ty)
@@ -803,17 +803,17 @@ let rec infer (env : Env.t) level = function
     let _, var_k = T.kind ~name:"v" level in
     let _, borrow_k = T.kind ~name:"b" level in
     let (name, _), env, constr, var_ty = infer_var env level name in
-    let bound_k = match r with
-      | Mutable -> T.Aff (Region level)
-      | Immutable ->  T.Un (Region level)
-    in
+    (* let bound_k = match r with
+     *   | Mutable -> T.Aff (Region level)
+     *   | Immutable ->  T.Un (Region level)
+     * in *)
     with_type ~name:name.name ~env ~level @@ fun env ty _ ->
     let borrow_ty = T.Borrow (Mutable, var_k, ty) in
     let mults = Multiplicity.borrow name r borrow_k in
     let constr = normalize_constr env [
         C.denormal constr;
         C.(var_ty <== borrow_ty);
-        C.(bound_k <= borrow_k);
+        (* C.(bound_k <= borrow_k); *)
       ]
     in
     mults, env, constr, T.Borrow (r, borrow_k, ty)
@@ -897,14 +897,15 @@ let rec infer (env : Env.t) level = function
   | App(fn_expr, arg) ->
     infer_app env level fn_expr arg
 
-  | Region expr ->
+  | Region (v, expr) ->
     with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
     let mults, env, constr, infered_ty = infer env (level+1) expr in
-    let mults = Multiplicity.exit_scope mults in 
+    let mults, exit_constr = Multiplicity.exit_region v (level+1) mults in 
     let constr = normalize_constr env [
         C.denormal constr;
         C.(infered_ty <== return_ty);
         Kind.first_class level return_kind;
+        exit_constr;
       ]
     in
     mults, env, constr, return_ty

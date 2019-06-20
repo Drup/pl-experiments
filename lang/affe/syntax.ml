@@ -34,7 +34,7 @@ and expr =
   (* | Let of Name.t * expr * expr *)
   | Let of rec_flag * pattern * expr * expr
   | Match of expr * lambda list
-  | Region of expr
+  | Region of Name.t * expr
   | Tuple of expr list
 
 
@@ -147,7 +147,7 @@ module Rename = struct
     | Constant _ as e -> e
     | Array l  -> Array (List.map (expr env) l)
     | Tuple l  -> Tuple (List.map (expr env) l)
-    | Region e -> Region (expr env e)
+    | Region ({name},e) -> Region (find name env, expr env e)
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
     | ReBorrow (r, {name}) -> ReBorrow (r, find name env)

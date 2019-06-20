@@ -8,7 +8,7 @@ let copy a =
 
 let set (a, i, x) =
   let a2 = copy a in
-  let x = {(&!a2).(i) <- x} in
+  let x = {a2| (&!a2).(i) <- x} in
   a2
 
 let set_mut (a, i, x) = a.(i) <- x

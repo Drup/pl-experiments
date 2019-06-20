@@ -28,9 +28,9 @@ let full_cell =
 
 let singleton n = add empty n
 
-let get x (i, j) = get x (i*size+j)
-let set_mut x (i, j) v = set_mut x (i*size+j) v
-let set x (i, j) v = set x (i*size+j) v
+let get x (i, j) = get (x, i*size+j)
+let set_mut x (i, j) v = set_mut (x, i*size+j, v)
+let set x (i, j) v = set (x, i*size+j, v)
 
 val for_all : \ 'k 'k2 ('a: _) . ('a -{'k2}> bool) -> &('k, 'a array) -{'k2}> bool
 
@@ -47,14 +47,14 @@ let for =
 
 let remove_line i0 j0 g n =
   for (j0+1) (size - 1) (fun j -> 
-    let cell = { rm (get &&g (i0 , j)) n } in
-    {set_mut &&!g (i0, j) cell}
+    let cell = {g| rm (get &&g (i0 , j)) n } in
+    {g| set_mut &&!g (i0, j) cell}
   )
 
 let remove_column i0 j0 g n =
   for (i0+1) (size - 1) (fun i ->
-    let cell = { rm (get &&g (i , j0)) n } in
-    {set_mut &&!g (i , j0) cell}
+    let cell = {g| rm (get &&g (i , j0)) n } in
+    {g| set_mut &&!g (i , j0) cell}
   )
 
 let remove_square i0 j0 g n =
@@ -64,8 +64,8 @@ let remove_square i0 j0 g n =
     for (3*pos_j) (3*(pos_j+1) - 1) (fun j ->
       match and (i = i0) (j = j0) with {
         | False ->
-           let cell = { rm (get &&g (i , j)) n } in
-           {set_mut &&!g (i , j) cell}
+           let cell = {g| rm (get &&g (i , j)) n } in
+           {g| set_mut &&!g (i , j) cell}
          | True ->
            ()
       }
@@ -85,28 +85,26 @@ let next_pos (i, j) =
 }
 
 let remove i j g n =
-  let () = { remove_line i j &&!g n } in
-  let () = { remove_column i j &&!g n } in
-  let () = { remove_square i j &&!g n } in
+  let () = {g| remove_line i j &&!g n } in
+  let () = {g| remove_column i j &&!g n } in
+  let () = {g| remove_square i j &&!g n } in
   ()
 
 
-
-
 let solve =
-  let rec solve i j g =
-    match is_solved &g with {
-    | True -> print &g
+  let rec solve i j g = 
+    match is_solved g with {
+    | True -> print g
     | False ->
-      let s = get &g (i,j) in
+      let s = get g (i,j) in
       let (new_i, new_j) = next_pos (i,j) in
       let try_solution n =
-        let new_g = set &g (i,j) (singleton n) in
-        let () = { remove i j &!new_g n } in
-        match { is_valid &new_g } with {
-        | True -> { solve new_i new_j new_g }
+        let new_g = set g (i,j) (singleton n) in
+        let () = {new_g| remove i j &!new_g n } in
+        {new_g| match is_valid &new_g with {
+        | True -> solve new_i new_j &new_g 
         | False -> ()
-        }
+        }}
       in
       iter_set try_solution s
     }
