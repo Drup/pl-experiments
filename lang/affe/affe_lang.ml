@@ -56,6 +56,7 @@ include Zoo.Main (struct
     
     let exec env c =
       let c = Syntax.Rename.command env.name c in
+      let c = Region.annotate_command c in
       match c with
       | Syntax.ValueDecl {rec_flag ; name ; expr} ->
         if !Printer.debug then

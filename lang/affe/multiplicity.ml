@@ -95,7 +95,7 @@ let exit_region bounded_vars region_level (m0 : t) =
       | Some Borrow (Immutable, ks) ->
         constr_kinds ks (fun r -> Un r);
         Some (Shadow Immutable)
-      | Some b -> raise (FailRegion (var,b)))
+      | Some b -> (* raise (FailRegion (var,b))) *) Some b)
       m
   in
   let m' = Name.Map.fold f bounded_vars m0 in

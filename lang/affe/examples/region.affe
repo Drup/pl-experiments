@@ -1,0 +1,12 @@
+let ignore x = ()
+
+let x = 2
+
+let t1 =
+  let y = &x in
+  2
+
+let t2 =
+  ignore &x
+
+let t3 = fun y -> ignore &y
