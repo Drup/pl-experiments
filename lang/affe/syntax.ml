@@ -36,7 +36,7 @@ and expr =
   (* | Let of Name.t * expr * expr *)
   | Let of rec_flag * pattern * expr * expr
   | Match of match_spec * expr * lambda list
-  | Region of Name.t * expr
+  | Region of borrow Name.Map.t * expr
   | Tuple of expr list
 
 
@@ -124,6 +124,11 @@ module Rename = struct
 
   let add n k env = SMap.add n k env
 
+  let maps env ns =
+    Name.Map.fold
+      (fun {name} k m -> Name.Map.add (find name env) k m)
+      ns Name.Map.empty
+  
   let rec pattern env = function
     | PUnit -> env, PUnit
     | PVar {name} ->
@@ -149,7 +154,7 @@ module Rename = struct
     | Constant _ as e -> e
     | Array l  -> Array (List.map (expr env) l)
     | Tuple l  -> Tuple (List.map (expr env) l)
-    | Region ({name},e) -> Region (find name env, expr env e)
+    | Region (ns, e) -> Region (maps env ns, expr env e)
     | Var { name } -> Var (find name env)
     | Borrow (r, {name}) -> Borrow (r, find name env)
     | ReBorrow (r, {name}) -> ReBorrow (r, find name env)

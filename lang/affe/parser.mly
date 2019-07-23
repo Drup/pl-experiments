@@ -103,7 +103,7 @@ simple_expr:
       | [e] -> e
       | l -> Tuple l
     }
-  | LACCO v=name BAR e=expr RACCO { Region (v, e) }
+  | LACCO e=expr RACCO { Region (Name.Map.empty, e) }
   | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
   | b=borrow name=name { Borrow (b, name) }
   | AND b=borrow name=name { ReBorrow (b, name) }

@@ -102,9 +102,12 @@ let rec expr
       Fmt.pf fmt "@[<v2>@[%a@ %a@ %a@]@ %a@]"
         bold ("match"^s) expr e bold "in"
         (Fmt.list ~sep case) l
-    | Region (v, e) ->
-      let pp fmt (v, e) = Fmt.pf fmt "%a | %a" name v expr e in
-      Fmt.braces pp fmt (v,e)
+    | Region (ns, e) ->
+      let pp fmt () =
+        Fmt.pf fmt "%a | %a"
+          Fmt.(iter_bindings ~sep:sp Name.Map.iter (pair name nop)) ns expr e
+      in
+      Fmt.braces pp fmt ()
 
 and expr_with_paren fmt x =
   let must_have_paren = match x with

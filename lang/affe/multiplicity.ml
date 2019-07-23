@@ -12,10 +12,6 @@ let fail n u1 u2 = raise (Fail (n, u1, u2))
 
 let constr_all_kinds ~bound ks =
   List.map (fun k -> Constraint.(k <= bound)) ks
-let bound_all_kinds f n ks =
-  CCList.flat_map
-    (fun k -> Constraint.[f (Region.Region n) <= k; k <= f Region.Never])
-    ks
 
 let merge (e1 : t) (e2 : t) =
   let constr = ref [] in
@@ -80,24 +76,30 @@ let constraint_all (e : t) bound : constr =
   let l = Name.Map.fold aux e [] in
   Constraint.cand l
 
-let exit_region x0 n (m : t) =
+let bound_all_kinds (l,h) ks =
+  CCList.flat_map
+    (fun k -> Constraint.[l <= k; k <= h])
+    ks
+let exit_region bounded_vars region_level (m0 : t) =
   let constr = ref [] in
   let constr_kinds ks f =
-    constr := (bound_all_kinds f n ks) @ !constr
+    constr :=
+      (bound_all_kinds (f @@ Region.Region region_level, f @@ Region.Never) ks)
+       @ !constr
   in
-  let m = Name.Map.update x0 (function
+  let f var _ m = Name.Map.update var (function
       | None -> None
       | Some Borrow (Mutable, ks) ->
         constr_kinds ks (fun r -> Aff r);
         Some (Shadow Mutable)
       | Some Borrow (Immutable, ks) ->
-        Fmt.epr "%a@." (Fmt.list Printer.kind) ks ;
         constr_kinds ks (fun r -> Un r);
         Some (Shadow Immutable)
-      | Some b -> raise (FailRegion (x0,b)))
+      | Some b -> raise (FailRegion (var,b)))
       m
   in
-  m, Constraint.cand !constr
+  let m' = Name.Map.fold f bounded_vars m0 in
+  m', Constraint.cand !constr
 
 let exit_binder (e : t) x k : constr * t =
   let constr = match Name.Map.find_opt x e with

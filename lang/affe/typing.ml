@@ -86,7 +86,7 @@ module Instantiate = struct
 
   let included tbl vars = 
     Name.Tbl.keys tbl
-    |> Sequence.for_all
+    |> Iter.for_all
       (fun x -> CCList.mem ~eq:Name.equal x vars)
 
   let kind_scheme ~level ~kargs ~ktbl {T. kvars; constr; args; kind } =
@@ -926,10 +926,10 @@ let rec infer (env : Env.t) level = function
   | App(fn_expr, arg) ->
     infer_app env level fn_expr arg
 
-  | Region (v, expr) ->
+  | Region (vars, expr) ->
     with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
     let mults, env, constr, infered_ty = infer env (level+1) expr in
-    let mults, exit_constr = Multiplicity.exit_region v (level+1) mults in 
+    let mults, exit_constr = Multiplicity.exit_region vars (level+1) mults in 
     let constr = normalize_constr env [
         C.denormal constr;
         C.(infered_ty <== return_ty);
