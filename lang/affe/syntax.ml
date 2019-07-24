@@ -18,6 +18,7 @@ type rec_flag =
 
 type pattern =
   | PUnit
+  | PAny
   | PVar of Name.t
   | PConstr of Name.t * pattern option
   | PTuple of pattern list
@@ -131,6 +132,7 @@ module Rename = struct
   
   let rec pattern env = function
     | PUnit -> env, PUnit
+    | PAny -> env, PAny
     | PVar {name} ->
       let new_name = Name.create ~name () in
       let env = add name new_name env in

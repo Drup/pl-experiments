@@ -1,4 +1,4 @@
-let ignore x = ()
+let ignore _ = ()
 
 let x = 2
 

@@ -687,6 +687,13 @@ let with_type ~name ~env ~level f =
 let rec infer_pattern env level = function
   | PUnit ->
     env, T.True, [], Builtin.unit_ty
+  | PAny ->
+    with_type ~name:"any" ~env ~level @@ fun env ty k ->
+    let constr = C.cand [
+        C.(k <= Aff Never) ;
+      ]
+    in
+    env, constr, [], ty
   | PVar n ->
     with_type ~name:n.name ~env ~level @@ fun env ty k ->
     env, T.True, [n, ty, k], ty

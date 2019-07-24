@@ -44,6 +44,7 @@ let kname ?(unbound=false) fmt n =
 let borrow = function Immutable -> "" | Mutable -> "!"
 
 let rec pattern fmt = function
+  | PAny -> Fmt.pf fmt "_"
   | PUnit -> Fmt.pf fmt "()"
   | PVar n -> name fmt n
   | PConstr (constr, None) ->

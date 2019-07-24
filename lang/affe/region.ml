@@ -18,7 +18,7 @@ let update_all f m =
     ) m M.empty
 
 let rec vars_in_pattern (p : pattern) = match p with
-  | PUnit -> S.empty
+  | PUnit | PAny -> S.empty
   | PVar v -> S.singleton v
   | PConstr (_, None) -> S.empty
   | PConstr (_, Some p) -> vars_in_pattern p

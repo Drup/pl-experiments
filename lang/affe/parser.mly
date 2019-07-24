@@ -132,6 +132,7 @@ pattern:
 
 simple_pattern:
   | v=name { PVar v }
+  | UNDERSCORE { PAny }
   | LPAREN RPAREN { PUnit }
   | constr=uname { PConstr (constr, None) }
   | LPAREN p=pattern RPAREN { p }
