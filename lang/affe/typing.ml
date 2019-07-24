@@ -41,14 +41,14 @@ module Instantiate = struct
     try
       Name.Tbl.find ktbl id
     with Not_found ->
-      let b = T.kind ~name:id.name level in
+      let b = T.kind ?name:id.name level in
       Name.Tbl.add ktbl id b ;
       b
   let instance_tyvar ~level ~tbl id =
     try
       Name.Tbl.find tbl id
     with Not_found ->
-      let b = T.var ~name:id.name level in
+      let b = T.var ?name:id.name level in
       Name.Tbl.add tbl id b ;
       b
 
@@ -284,10 +284,11 @@ module Kind = struct
     try solve ?keep_vars c with
     | IllegalEdge (k1, k2) -> raise (Fail (K.constant k1, K.constant k2))
     | IllegalBounds (k1, v, k2) ->
+      let env = Printer.create_naming_env () in
       fail "The kind inequality %a < %a < %a is not satisfiable."
-        Printer.kind (K.constant k1)
-        Printer.kind v
-        Printer.kind (K.constant k2)
+        (Printer.kind env) (K.constant k1)
+        (Printer.kind env) v
+        (Printer.kind env) (K.constant k2)
 
   (* let solve ?keep_vars l =
    *   Format.eprintf "@[<2>Solving:@ %a@]@."
@@ -537,7 +538,7 @@ let rec infer_kind ~level ~env = function
     Normal.(constr' @ constrs), kind
   | T.Tuple args ->
     let constrs, args = infer_kind_many ~level ~env args in
-    let _, return_kind = T.kind ~name:"t" level in
+    let _, return_kind = T.kind level in
     let constr_tup =
       Normal.cand @@ List.map (fun k -> Normal.cleq k return_kind) args
     in
@@ -640,7 +641,7 @@ module Pat_modifier = struct
   let from_match_spec ~level : Syntax.match_spec -> _ = function
     | None -> Direct
     | Some b ->
-      let _, k = T.kind ~name:"k" level in
+      let _, k = T.kind level in
       Borrow (b,k)
   
 end
@@ -676,9 +677,9 @@ let with_binding env x ty f =
   let env = Env.rm x env in
   multis, env, constr, ty
 
-let with_type ~name ~env ~level f =
-  let var_name, ty = T.var ~name level in
-  let _, kind = T.kind ~name level in
+let with_type ~env ~level f =
+  let var_name, ty = T.var level in
+  let _, kind = T.kind level in
   let kind_scheme = T.kscheme kind in
   let env = Env.add_ty var_name kind_scheme env in
   f env ty kind
@@ -688,14 +689,14 @@ let rec infer_pattern env level = function
   | PUnit ->
     env, T.True, [], Builtin.unit_ty
   | PAny ->
-    with_type ~name:"any" ~env ~level @@ fun env ty k ->
+    with_type ~env ~level @@ fun env ty k ->
     let constr = C.cand [
         C.(k <= Aff Never) ;
       ]
     in
     env, constr, [], ty
   | PVar n ->
-    with_type ~name:n.name ~env ~level @@ fun env ty k ->
+    with_type ~env ~level @@ fun env ty k ->
     env, T.True, [n, ty, k], ty
   | PConstr (constructor, None) ->
     let env, constructor_constr, constructor_ty =
@@ -771,7 +772,7 @@ and with_pattern
 let rec infer (env : Env.t) level = function
   | Constant c -> constant level env c
   | Lambda(param, body) ->
-    let _, arrow_k = T.kind ~name:"ar" level in
+    let _, arrow_k = T.kind level in
     let mults, env, constr, (param_ty, return_ty) =
       infer_lambda env level (param, body)
     in
@@ -784,7 +785,7 @@ let rec infer (env : Env.t) level = function
     mults, env, constr, ty
     
   | Array elems -> 
-    with_type ~name:"v" ~level ~env @@ fun env array_ty _ ->
+    with_type ~level ~env @@ fun env array_ty _ ->
     let mults, env, constrs, tys = 
       infer_many env level Multiplicity.empty elems
     in 
@@ -821,7 +822,7 @@ let rec infer (env : Env.t) level = function
     Multiplicity.var name k, env, constr, ty
 
   | Borrow (r, name) ->
-    let _, borrow_k = T.kind ~name:"b" level in
+    let _, borrow_k = T.kind level in
     let (name, _), env, constr, var_ty = infer_var env level name in
     (* let bound_k = match r with
      *   | Mutable -> T.Aff (Region level)
@@ -835,14 +836,14 @@ let rec infer (env : Env.t) level = function
     in
     mults, env, constr, T.Borrow (r, borrow_k, var_ty)
   | ReBorrow (r, name) ->
-    let _, var_k = T.kind ~name:"v" level in
-    let _, borrow_k = T.kind ~name:"b" level in
+    let _, var_k = T.kind level in
+    let _, borrow_k = T.kind level in
     let (name, _), env, constr, var_ty = infer_var env level name in
     (* let bound_k = match r with
      *   | Mutable -> T.Aff (Region level)
      *   | Immutable ->  T.Un (Region level)
      * in *)
-    with_type ~name:name.name ~env ~level @@ fun env ty _ ->
+    with_type ~env ~level @@ fun env ty _ ->
     let borrow_ty = T.Borrow (Mutable, var_k, ty) in
     let mults = Multiplicity.borrow name r borrow_k in
     let constr = normalize_constr env [
@@ -870,7 +871,7 @@ let rec infer (env : Env.t) level = function
     in
     mults, env, constr, body_ty
   | Let (Rec, PVar n, expr, body) ->
-    with_type ~name:n.name ~env ~level:(level + 1) @@ fun env ty k ->
+    with_type ~env ~level:(level + 1) @@ fun env ty k ->
     with_binding env n (T.tyscheme ty) @@ fun env ->
     let mults1, env, expr_constr, expr_ty =
       infer env (level + 1) expr
@@ -902,7 +903,7 @@ let rec infer (env : Env.t) level = function
 
   | Match (match_spec, expr, cases) ->
     let mults, env, expr_constrs, match_ty = infer env level expr in
-    with_type ~name:"pat" ~env ~level @@ fun env return_ty _ ->
+    with_type ~env ~level @@ fun env return_ty _ ->
     let pat_modifier = Pat_modifier.from_match_spec ~level match_spec in
     let aux env case =
       let mults, env, constrs, (pattern, body_ty) =
@@ -934,7 +935,7 @@ let rec infer (env : Env.t) level = function
     infer_app env level fn_expr arg
 
   | Region (vars, expr) ->
-    with_type ~name:"r" ~env ~level @@ fun env return_ty return_kind ->
+    with_type ~env ~level @@ fun env return_ty return_kind ->
     let mults, env, constr, infered_ty = infer env (level+1) expr in
     let mults, exit_constr = Multiplicity.exit_region vars (level+1) mults in 
     let constr = normalize_constr env [
@@ -982,8 +983,8 @@ and infer_many (env0 : Env.t) level mult l =
 
 and infer_app (env : Env.t) level fn_expr args =
   let f (f_ty, env) param_ty =
-    let _, k = T.kind ~name:"a" level in
-    with_type ~name:"a" ~level ~env @@ fun env return_ty _ ->
+    let _, k = T.kind level in
+    with_type ~level ~env @@ fun env return_ty _ ->
     let constr = C.(f_ty <== T.Arrow (param_ty, k, return_ty)) in
     (return_ty, env), constr
   in
@@ -1001,7 +1002,7 @@ and infer_app (env : Env.t) level fn_expr args =
 let infer_top env _rec_flag n e =
   let _, env, constr, ty =
     let level = 1 in
-    with_type ~name:n.Name.name ~env ~level @@ fun env ty _k ->
+    with_type ~env ~level @@ fun env ty _k ->
     with_binding env n (T.tyscheme ty) @@ fun env ->
     infer env level e
   in

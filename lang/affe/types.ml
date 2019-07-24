@@ -81,11 +81,11 @@ type kscheme = {
 }
 
 
-let var ~name level =
-  let n = Name.create ~name () in
+let var ?name level =
+  let n = Name.create ?name () in
   n, Var (ref (Unbound(n, level)))
-let kind ~name level =
-  let n = Name.create ~name () in
+let kind ?name level =
+  let n = Name.create ?name () in
   n, KVar (ref (KUnbound(n, level)))
 let gen_var () = let n = Name.create () in n, GenericVar n
 let gen_kind_var () = let n = Name.create () in n, KGenericVar n

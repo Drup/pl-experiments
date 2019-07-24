@@ -36,19 +36,20 @@ include Zoo.Main (struct
     let toplevel_parser = Some (Parser.toplevel Lexer.token)
 
     let harness f =
+      let env = Printer.create_naming_env () in
       try f () with
       | Typing.Unif.Fail (ty1, ty2) ->
         Zoo.error ~kind:"Type error"
           "@[<2>Cannot unify types@ %a@]@ @[<2>and@ %a@]@."
-          Printer.typ ty1 Printer.typ ty2
+          (Printer.typ env) ty1 (Printer.typ env) ty2
       | Typing.Kind.Fail (k1, k2) ->
         Zoo.error ~kind:"Kind error"
           "@[<2>Cannot unify kinds@ %a@]@ @[<2>and@ %a@]@."
-          Printer.kind k1 Printer.kind k2
+          (Printer.kind env) k1 (Printer.kind env) k2
       | Multiplicity.Fail (name, u1, u2) ->
         Zoo.error ~kind:"Use error"
           "Variable %a used as %a and %a. This uses are incompatible."
-          Printer.name name Printer.use u1 Printer.use u2
+          Printer.name name (Printer.use env) u1 (Printer.use env) u2
       | Env.Type_not_found name -> 
         Zoo.error "Unknwon type %a" Printer.name name
       | Env.Var_not_found name -> 
@@ -85,7 +86,7 @@ include Zoo.Main (struct
         Zoo.print_info "@[<2>%a :@ @[%a@]@]@."
           Printer.name name  Printer.scheme scheme
         ;
-        let v = Syntax.Primitive name.name in
+        let v = Syntax.Primitive (CCOpt.get_exn name.name) in
         add_def name scheme v env
       | Syntax.TypeDecl decl ->
         let ty_name, ty_decl, constrs =

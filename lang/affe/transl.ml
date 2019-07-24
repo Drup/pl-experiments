@@ -4,7 +4,7 @@ module Skind = Syntax.Kind
 let transl_kind ~ktbl ~level = function
   | Skind.KVar n ->
     snd @@ Typing.Instantiate.instance_kvar ~ktbl ~level n
-  | Unknown -> snd @@ Types.kind ~name:"r" level
+  | Unknown -> snd @@ Types.kind level
   | Un -> Un Global
   | Aff -> Aff Global
   | Lin -> Lin Global

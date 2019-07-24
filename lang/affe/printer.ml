@@ -26,20 +26,13 @@ let rec digits fmt i =
   end
 
 let name_with_digits fmt {Name. name ; id } =
-  Format.fprintf fmt "%s%a" name  digits id
+  Format.fprintf fmt "%s%a" (CCOpt.get_or ~default:"_" name)  digits id
 let name_no_digits fmt {Name. name ; _ } =
-  Format.fprintf fmt "%s" name
+  Format.fprintf fmt "%s" (CCOpt.get_or ~default:"_" name)
 
 let name = if !debug then name_with_digits else name_no_digits
 
-let tyname ?(unbound=false) fmt n =
-  Format.fprintf fmt "'%s%a" (if unbound then "_" else "")
-    name_with_digits n
-let kname ?(unbound=false) fmt n =
-  Format.fprintf fmt "^%s%a" (if unbound then "_" else "")
-    name_with_digits n
-(* let rname ?(unbound=false) fmt n =
- *   Format.fprintf fmt "^%s%a" (if unbound then "_" else "") name n *)
+(** Expressions and Patterns *)
 
 let borrow = function Immutable -> "" | Mutable -> "!"
 
@@ -130,19 +123,65 @@ and expr_with_paren fmt x =
   Format.fprintf fmt
     (if must_have_paren then "@[(%a@])" else "%a") expr x 
 
-let rec typ_need_paren = function
-  | T.Arrow _ -> true
-  | T.Var { contents = Link t } -> typ_need_paren t
-  | _ -> false
+(** Types *)
 
-(* let rec rvar
- *   = fun fmt -> function
- *   | T.RUnbound (n,_) -> kname ~unbound:true fmt n
- *   | T.RLink t -> region fmt t
- * 
- * and region fmt = function
- *   | T.RVar { contents = x } -> rvar fmt x
- *   | T.RGenericVar n -> rname fmt n *)
+module UsedNames = CCHashtbl.Make(CCString)
+type naming_env = {
+  tbl : string Name.Tbl.t;
+  used : int UsedNames.t;
+}
+let create_naming_env () = {
+  tbl = Name.Tbl.create 4;
+  used = UsedNames.create 4;
+}
+
+let fresh_name pool used =
+  let l = String.length pool in
+  let rec mk_string i = 
+    if i < l then
+      pool.[i] :: []
+    else
+      pool.[i mod l] :: mk_string (i / l)
+  in
+  let rec try_all i =
+    let s = CCString.of_list @@ mk_string i in
+    match UsedNames.find_opt used s with
+    | Some _ -> try_all (i+1)
+    | None -> s
+  in
+  try_all 0
+
+let get_print_name env pool n =
+  match Name.Tbl.find_opt env.tbl n with
+  | Some n -> n
+  | None ->
+    begin
+      match n.name with
+      | None ->
+        let name = fresh_name pool env.used in
+        Name.Tbl.add env.tbl n name;
+        UsedNames.add env.used name 1;
+        name
+      | Some name ->
+        begin match UsedNames.find_opt env.used name with
+          | None ->
+            Name.Tbl.add env.tbl n name;
+            UsedNames.add env.used name 1;
+            name
+          | Some i ->
+            UsedNames.add env.used name (i+1);
+            name ^ string_of_int i
+        end
+    end 
+
+let typool = "abcdef"
+let tyname ?(unbound=false) env fmt n = 
+  Format.fprintf fmt "'%s%s" (if unbound then "_" else "")
+    (get_print_name env typool n)
+let kpool = "klmn"
+let kname ?(unbound=false) env fmt n =
+  Format.fprintf fmt "^%s%s" (if unbound then "_" else "")
+    (get_print_name env kpool n)
 
 let region fmt = function
   | T.Region.Region i -> digits fmt i
@@ -150,83 +189,91 @@ let region fmt = function
   | Global -> ()
 
 let rec kvar
-  = fun fmt -> function
-  | T.KUnbound (n,_) -> kname ~unbound:true fmt n
-  | T.KLink t -> kind fmt t
+  = fun env fmt -> function
+  | T.KUnbound (n,_) -> kname ~unbound:true env fmt n
+  | T.KLink t -> kind env fmt t
 
-and kind fmt = function
+and kind env fmt = function
   | T.Un r -> Format.fprintf fmt "un%a" region r
   | T.Aff r -> Format.fprintf fmt "aff%a" region r
   | T.Lin r -> Format.fprintf fmt "lin%a" region r
-  | T.KVar { contents = x } -> kvar fmt x
-  | T.KGenericVar n -> kname fmt n
+  | T.KVar { contents = x } -> kvar env fmt x
+  | T.KGenericVar n -> kname env fmt n
 
-let use fmt (u : Types.Use.t) = match u with
+let use env fmt (u : Types.Use.t) = match u with
   | Shadow _ -> Fmt.pf fmt "Shadow"
-  | Borrow (b, ks) -> Fmt.pf fmt "&%s(%a)" (borrow b) (Fmt.list kind) ks
-  | Normal ks -> Fmt.pf fmt "Use(%a)" (Fmt.list kind) ks
+  | Borrow (b, ks) -> Fmt.pf fmt "&%s(%a)" (borrow b) (Fmt.list @@ kind env) ks
+  | Normal ks -> Fmt.pf fmt "Use(%a)" (Fmt.list @@ kind env) ks
 
 let rec tyvar
-  = fun fmt -> function
-  | T.Unbound (n,_) -> tyname ~unbound:true fmt n
-  | T.Link t -> typ_with_paren fmt t
+  = fun env fmt -> function
+  | T.Unbound (n,_) -> tyname ~unbound:true env fmt n
+  | T.Link t -> typ_with_paren env fmt t
 
 and typ
-  = fun fmt -> function
+  = fun env fmt -> function
   | T.App (f,[]) ->
     name fmt f
   | T.Borrow (r, k, t) ->
-    Format.fprintf fmt "&%s(%a,%a)" (borrow r) kind k typ t
+    Format.fprintf fmt "&%s(%a,%a)" (borrow r) (kind env) k (typ env) t
   | T.Tuple l ->
     let pp_sep fmt () = Format.fprintf fmt " *@ " in
     Format.fprintf fmt "@[<2>%a@]"
-      (Format.pp_print_list ~pp_sep typ) l
+      (Format.pp_print_list ~pp_sep @@ typ env) l
   | T.App (f,e) ->
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
-      (Format.pp_print_list ~pp_sep typ) e  name f
+      (Format.pp_print_list ~pp_sep @@ typ env) e  name f
   | T.Arrow (a,T.Un Global,b) ->
-    Format.fprintf fmt "%a -> %a" typ_with_paren a  typ b
-  | T.Arrow (a,k,b) -> Format.fprintf fmt "%a -{%a}> %a" typ_with_paren a kind k  typ b
-  | T.Var { contents = x } -> tyvar fmt x
-  | T.GenericVar n -> tyname fmt n
+    Format.fprintf fmt "%a -> %a" (typ_with_paren env) a  (typ env) b
+  | T.Arrow (a,k,b) ->
+    Format.fprintf fmt "%a -{%a}> %a"
+      (typ_with_paren env) a (kind env) k  (typ env) b
+  | T.Var { contents = x } -> tyvar env fmt x
+  | T.GenericVar n -> tyname env fmt n
 
-and typ_with_paren fmt x =
+and typ_with_paren env fmt x =
   let must_have_paren = match x with
     | T.Arrow _ -> true
     | _ -> false
   in
   Format.fprintf fmt
-    (if must_have_paren then "@[(%a@])" else "%a") typ x
+    (if must_have_paren then "@[(%a@])" else "%a") (typ env) x
 
-let constr fmt (k1, k2) =
-  Format.fprintf fmt "(%a < %a)" kind k1 kind k2
-let constrs fmt l =
+(** Constraints *)
+
+let constr env fmt (k1, k2) =
+  Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
+let constrs env fmt l =
   let pp_sep fmt () = Format.fprintf fmt " &@ " in
-  Format.fprintf fmt "%a" Format.(pp_print_list ~pp_sep constr) l
+  Format.fprintf fmt "%a" Format.(pp_print_list ~pp_sep @@ constr env) l
+
+(** Schemes *)
 
 let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
-  let pp_sep fmt () = Format.fprintf fmt "," in
+  let env = create_naming_env () in
+  let pp_sep fmt () = Format.fprintf fmt ", " in
   let pp_arrow fmt () = Format.fprintf fmt "@ ->@ " in
   Format.pp_open_box fmt 2 ;
   begin
     if kvars <> [] then
       Format.fprintf fmt "∀%a.@ "
-        Format.(pp_print_list ~pp_sep name) kvars
+        Format.(pp_print_list ~pp_sep @@ kname ~unbound:false env) kvars
   end;
   begin
     if c <> [] then
-      Format.fprintf fmt "%a =>@ " constrs c
+      Format.fprintf fmt "%a =>@ " (constrs env) c
   end;
   Format.fprintf fmt "%a"
-    Format.(pp_print_list ~pp_sep:pp_arrow kind) (args@[k]);
+    Format.(pp_print_list ~pp_sep:pp_arrow @@ kind env) (args@[k]);
   Format.pp_close_box fmt ();
   ()
 
 and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
+  let env = create_naming_env () in
   let pp_sep fmt () = Format.fprintf fmt ",@ " in
   let binding fmt (ty,k) =
-    Format.fprintf fmt "(%a:%a)" (tyname ~unbound:false) ty kind k
+    Format.fprintf fmt "(%a:%a)" (tyname ~unbound:false env) ty (kind env) k
   in
   Format.pp_open_box fmt 0 ;
   begin
@@ -234,7 +281,7 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
     let has_types = not @@ CCList.is_empty tyvars in
     if has_kinds || has_types then begin
       Fmt.pf fmt "∀@[";
-      Format.(pp_print_list ~pp_sep (kname ~unbound:false)) fmt kvars ;
+      Format.(pp_print_list ~pp_sep (kname ~unbound:false env)) fmt kvars ;
       if has_kinds && has_types then pp_sep fmt () ;
       Format.(pp_print_list ~pp_sep binding) fmt tyvars;
       Fmt.pf fmt "@].@ ";
@@ -242,13 +289,14 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
   end;
   begin
     if c <> [] then
-      Format.fprintf fmt "@[%a@] =>@ " constrs c
+      Format.fprintf fmt "@[%a@] =>@ " (constrs env) c
   end;
-  Fmt.box typ fmt ty;
+  Fmt.box (typ env) fmt ty;
   Format.pp_close_box fmt ();
   ()
 
 let env fmt env =
+  let nameenv = create_naming_env () in
   let print_env pp_key pp_val fmt e =
     Format.pp_print_list
       ~pp_sep:Format.pp_print_cut
@@ -265,4 +313,5 @@ let env fmt env =
   Format.fprintf fmt "%a%a%a"
     (print_env "Variables:" name scheme) env.Env.vars
     (print_env "Type Constructors:" name kscheme) env.Env.constr
-    (print_env "Type Variables:" (tyname ~unbound:false) kscheme) env.Env.types
+    (print_env "Type Variables:"
+       (tyname ~unbound:false nameenv) kscheme) env.Env.types

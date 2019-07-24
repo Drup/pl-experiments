@@ -118,12 +118,17 @@ module Rename = struct
   }
 
   let find x env =
-    if SMap.mem x env then
-      SMap.find x env
-    else
-      Zoo.error "Unbound variable %s" x
+    match x with
+    | None -> Name.create ()
+    | Some x -> 
+      if SMap.mem x env then
+        SMap.find x env
+      else
+        Zoo.error "Unbound variable %s" x
 
-  let add n k env = SMap.add n k env
+  let add n k env = match n with
+    | None -> assert false
+    | Some n -> SMap.add n k env
 
   let maps env ns =
     Name.Map.fold
@@ -134,7 +139,7 @@ module Rename = struct
     | PUnit -> env, PUnit
     | PAny -> env, PAny
     | PVar {name} ->
-      let new_name = Name.create ~name () in
+      let new_name = Name.create ?name () in
       let env = add name new_name env in
       env, PVar new_name
     | PConstr (constr, None) ->
@@ -201,11 +206,12 @@ module Rename = struct
     | Ty.Borrow (r, k, ty) ->
       Ty.Borrow (r, kind_expr ~kenv k, type_expr ~kenv ~tyenv ~venv ty)
 
-  let add_kind_var kenv {Name. name} = 
-    if SMap.mem name kenv then
+  let add_kind_var kenv {Name. name} =
+    match name with
+    | Some n when SMap.mem n kenv ->
       kenv, find name kenv
-    else
-      let n = Name.create ~name () in
+    | _ ->
+      let n = Name.create ?name () in
       add name n kenv, n
   let add_kind_expr kenv = function
     | Kind.KVar name ->
@@ -214,7 +220,7 @@ module Rename = struct
     | Kind.Un | Kind.Aff | Kind.Lin | Kind.Unknown as k -> kenv, k
   let add_type_param (kenv, venv) (({name} : Name.t), k) =
     let kenv, k = add_kind_expr kenv k in
-    let n = Name.create ~name () in
+    let n = Name.create ?name () in
     let venv = add name n venv in
     (kenv, venv), (n,k)
 
@@ -237,7 +243,7 @@ module Rename = struct
     {Ty. kparams; params; constraints; typ}
 
   let rename_constructor ~tyenv ~kenv ~venv  {Ty. name = {name}; constraints; typ} =
-    let name = Name.create ~name () in
+    let name = Name.create ?name () in
     let typ = type_expr ~kenv ~tyenv ~venv typ in
     let constraints = constrs ~kenv constraints in
     {Ty. name; constraints; typ}
@@ -245,12 +251,12 @@ module Rename = struct
   let command { env ; tyenv } = function
     | ValueDecl { rec_flag; name = {name} ; expr = e } ->
       let e = expr env e in
-      let name = Name.create ~name () in
+      let name = Name.create ?name () in
       ValueDecl { rec_flag; name ; expr = e }
     | TypeDecl {
         name = {name}; params; kind; constraints; constructor; 
       }  ->
-      let name = Name.create ~name () in
+      let name = Name.create ?name () in
 
       let kenv = SMap.empty and venv = SMap.empty in
       let (kenv, venv), params =
@@ -262,7 +268,7 @@ module Rename = struct
       TypeDecl { name ; params ; constructor ; constraints ; kind }
     | ValueDef { name = {name} ; typ } ->
       let typ = type_scheme tyenv typ in
-      let name = Name.create ~name () in
+      let name = Name.create ?name () in
       ValueDef { name ; typ }
 
 end
