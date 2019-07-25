@@ -183,9 +183,9 @@ maybe_constraints:
 type_scheme:
   | p=param_list
     e=type_expr_with_constraint
-    { let kparams, params = p in
+    { let kvars, tyvars = p in
       let constraints, typ = e in
-      {Ty. kparams; params; constraints; typ}
+      {Ty. kvars; tyvars; constraints; typ}
     }
 
 %inline param_list:

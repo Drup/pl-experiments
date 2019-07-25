@@ -52,7 +52,7 @@ let transl_params ~env ~level params =
 
 let transl_type_scheme ~env (schm : STy.scheme) =
   let level = 1 in
-  let env, tbl, ktbl, _params = transl_params ~env ~level schm.params in
+  let env, tbl, ktbl, _tyvars = transl_params ~env ~level schm.tyvars in
   let constr = transl_constr ~ktbl ~level schm.constraints in
   let typ = transl_type ~ktbl ~tbl ~level schm.typ in
   let env, scheme = Typing.make_type_scheme ~env ~constr typ in
