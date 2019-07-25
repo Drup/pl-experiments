@@ -9,11 +9,11 @@ let mk_decl rec_flag name args e =
   let expr = match args with [] -> e | l -> mk_lambda l e in
   ValueDecl {rec_flag; name; expr}
 
-let mk_binop op a b = App (op, [a;b])
+let mk_binop op a b : expr = App (op, [a;b])
 
-let mk_var s = Var (Name.dummy s)
-let mk_get a i = App (mk_var "array_get", [Tuple [a;i]])
-let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
+let mk_var s : expr = Var (Name.dummy s)
+let mk_get a i : expr = App (mk_var "array_get", [Tuple [a;i]])
+let mk_set a i x : expr = App (mk_var "array_set", [Tuple [a;i;x]])
 %}
 
 %token EOF SEMISEMI
@@ -63,6 +63,7 @@ let mk_set a i x = App (mk_var "array_set", [Tuple [a;i;x]])
 %start toplevel
 %type <Syntax.command> toplevel
 
+%type <expr> expr
 %%
 file: list(command) EOF { $1 }
 toplevel: command SEMISEMI { $1 }
@@ -79,7 +80,7 @@ expr:
   | e=simple_expr /* %prec below_DOT */
     { e }
   | f=simple_expr l=list_expr /* %prec FUNAPP */
-     { App (f,List.rev l) }
+    { App (f,List.rev l) }
   | e1=expr op=binop e2=expr
     { mk_binop op e1 e2 }
   | LET r=rec_flag name=name args=nonempty_list(simple_pattern) EQUAL e1=expr IN e2=expr
@@ -173,11 +174,11 @@ maybe_constructors:
 constructor_decl:
   name=uname OF e=type_expr_with_constraint
     { let constraints, typ = e in
-      {Ty. name; constraints; typ}
+      {T. name; constraints; typ}
     }
 
 maybe_constraints:
-  | { [] }
+  | { C.ctrue }
   | WITH c=constraints { c }
 
 type_scheme:
@@ -185,7 +186,7 @@ type_scheme:
     e=type_expr_with_constraint
     { let kvars, tyvars = p in
       let constraints, typ = e in
-      {Ty. kvars; tyvars; constraints; typ}
+      {T. kvars; tyvars; constraints; typ}
     }
 
 %inline param_list:
@@ -193,48 +194,48 @@ type_scheme:
   | FORALL kparams=list(kind_var) params=list(type_quantifier) DOT { kparams, params}
 
 type_expr_with_constraint:
-  | t=type_expr { ([], t) }
+  | t=type_expr { (C.ctrue, t) }
   | c=constraints BIGRIGHTARROW t=type_expr { (c, t) }
 
 type_expr:
   | t=simple_type_expr { t }
-  | l=separated_nontrivial_llist(STAR, simple_type_expr) { Ty.Tuple l }
-  | t1=type_expr k=arrow t2=type_expr { Ty.Arrow (t1, k, t2) }
+  | l=separated_nontrivial_llist(STAR, simple_type_expr) { T.Tuple l }
+  | t1=type_expr k=arrow t2=type_expr { T.Arrow (t1, k, t2) }
 simple_type_expr:
   | t=simple_type_expr_no_paren { t }
   | LPAREN e=type_expr RPAREN %prec FUN
     { e }
 simple_type_expr_no_paren:
-  | n=type_var { Ty.Var n }
-  | n=name { Ty.App (n, []) }
-  | t=simple_type_expr n=name { Ty.App (n, [t]) }
+  | n=type_var { T.Var n }
+  | n=name { T.App (n, []) }
+  | t=simple_type_expr n=name { T.App (n, [t]) }
   | b=borrow LPAREN k=kind_expr COMMA t=type_expr RPAREN
-    { Ty.Borrow (b,k,t) }
+    { T.Borrow (b,k,t) }
   | LPAREN p=type_list RPAREN n=name
-    { Ty.App (n, p) }
+    { T.App (n, p) }
 
 %inline type_list:
   tys = inline_reversed_separated_nonempty_llist(COMMA, type_expr) { List.rev tys }
   
 %inline arrow:
-  | RIGHTARROW { Kind.Un }
+  | RIGHTARROW { K.Un }
   | DASHLACCO k=kind_expr RACCOGREATER { k }
 
 kind_annot:
-  | { Kind.Unknown }
+  | { K.Unknown }
   | DOUBLECOLON k=kind_expr { k }
 
 kind_expr:
-  | n=kind_var { Kind.KVar n }
-  | UN { Kind.Un }
-  | AFF { Kind.Aff }
-  | LIN { Kind.Lin }
-  | UNDERSCORE { Kind.Unknown }
+  | n=kind_var { K.KVar n }
+  | UN { K.Un }
+  | AFF { K.Aff }
+  | LIN { K.Lin }
+  | UNDERSCORE { K.Unknown }
 
-constraints: l=separated_nonempty_list (COMMA, constr) { l }
+constraints: l=separated_nonempty_list (COMMA, constr) { C.And l }
 constr:
-  | k1=kind_expr LESS k2=kind_expr { (k1, k2) }
-  | k1=kind_expr GREATER k2=kind_expr { (k2, k1) }
+  | k1=kind_expr LESS k2=kind_expr { C.KindLEq (k1, k2) }
+  | k1=kind_expr GREATER k2=kind_expr { C.KindLEq (k2, k1) }
 
 type_quantifier:
   | LPAREN t=type_var_binding RPAREN {t}

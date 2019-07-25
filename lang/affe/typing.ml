@@ -37,101 +37,119 @@ let rec is_nonexpansive = function
 (** Instance *)
 module Instantiate = struct
 
-  let instance_kvar ~level ~ktbl id =
+  type ienv = {
+    kinds : (Name.t * T.kind) Name.Tbl.t;
+    types : (Name.t * T.typ) Name.Tbl.t;
+    level : int;
+  }
+  let create level = {
+    kinds = Name.Tbl.create 17;
+    types = Name.Tbl.create 17;
+    level;
+  }
+  
+  let instance_kvar ~ienv id =
     try
-      Name.Tbl.find ktbl id
+      Name.Tbl.find ienv.kinds id
     with Not_found ->
-      let b = T.kind ?name:id.name level in
-      Name.Tbl.add ktbl id b ;
+      let b = T.kind ?name:id.name ienv.level in
+      Name.Tbl.add ienv.kinds id b ;
       b
-  let instance_tyvar ~level ~tbl id =
+  let instance_tyvar ~ienv id =
     try
-      Name.Tbl.find tbl id
+      Name.Tbl.find ienv.types id
     with Not_found ->
-      let b = T.var ?name:id.name level in
-      Name.Tbl.add tbl id b ;
+      let b = T.var ?name:id.name ienv.level in
+      Name.Tbl.add ienv.types id b ;
       b
 
-  let rec instance_kind ~level ~ktbl = function
+  let rec instance_kind ~ienv = function
     | T.KVar {contents = KLink k} as korig ->
-      let knew = instance_kind ~level ~ktbl k in
+      let knew = instance_kind ~ienv k in
       if korig = knew then korig else knew
     | T.KVar {contents = KUnbound _} as k -> k
-    | T.KGenericVar id -> snd @@ instance_kvar ~level ~ktbl id
+    | T.KGenericVar id -> snd @@ instance_kvar ~ienv id
     | T.Un _ | T.Aff _ | T.Lin _ as k -> k
 
-  let rec instance_type ~level ~tbl ~ktbl = function
-    | T.Var {contents = Link ty} -> instance_type ~level ~tbl ~ktbl ty
-    | T.GenericVar id -> snd @@ instance_tyvar ~level ~tbl id
+  let rec instance_type ~ienv = function
+    | T.Var {contents = Link ty} -> instance_type ~ienv ty
+    | T.GenericVar id -> snd @@ instance_tyvar ~ienv id
     | T.Var {contents = Unbound _} as ty -> ty
     | T.App(ty, args) ->
-      let args = List.map (instance_type ~level ~tbl ~ktbl) args in
+      let args = List.map (instance_type ~ienv) args in
       App(ty, args)
     | T.Tuple args ->
-      let args = List.map (instance_type ~level ~tbl ~ktbl) args in
+      let args = List.map (instance_type ~ienv) args in
       Tuple args
     | T.Borrow (r, k, ty) ->
-      let k = instance_kind ~level ~ktbl k in
-      let ty = instance_type ~level ~tbl ~ktbl ty in
+      let k = instance_kind ~ienv k in
+      let ty = instance_type ~ienv ty in
       Borrow (r, k, ty)
     | T.Arrow(param_ty, k, return_ty) ->
-      Arrow(instance_type ~level ~tbl ~ktbl param_ty,
-            instance_kind ~level ~ktbl k,
-            instance_type ~level ~tbl ~ktbl return_ty)
+      Arrow(instance_type ~ienv param_ty,
+            instance_kind ~ienv k,
+            instance_type ~ienv return_ty)
 
 
-  let instance_constr ~level ~ktbl l =
-    let f = instance_kind ~level ~ktbl in
-    List.map (fun (k1,k2) -> (f k1, f k2)) l
+  let instance_constr ~ienv c =
+    let rec aux (c : Constraint.Normal.t) = match c with
+      | And l -> T.And (List.map aux l)
+      | KindLeq (k1, k2) ->
+        KindLeq (instance_kind ~ienv k1,
+                 instance_kind ~ienv k2)
+      | HasKind (t, k) ->
+        HasKind (instance_type ~ienv t,
+                 instance_kind ~ienv k)
+    in 
+    aux c
 
   let included tbl vars = 
     Name.Tbl.keys tbl
     |> Iter.for_all
       (fun x -> CCList.mem ~eq:Name.equal x vars)
 
-  let kind_scheme ~level ~kargs ~ktbl {T. kvars; constr; args; kind } =
+  let kind_scheme ~ienv ~kargs {T. kvars; constr; args; kind } =
     let kl = List.length kargs and l = List.length args in
     if kl <> l then
       fail
         "This type constructor is applied to %i types \
          but has only %i parameters." l kl;
     let constr =
-      List.fold_left2 (fun l k1 k2 -> (k1, k2) :: l)
+      List.fold_left2 (fun l k1 k2 -> Constraint.Normal.((k1 <= k2) &&& l))
         constr
         kargs
         args
     in
-    let constr = instance_constr ~level ~ktbl constr in
-    let kind = instance_kind ~level ~ktbl kind in
-    assert (included ktbl kvars);
+    let constr = instance_constr ~ienv constr in
+    let kind = instance_kind ~ienv kind in
+    assert (included ienv.kinds kvars);
     (constr, kind)
 
-  let typ_scheme ~level ~env ~tbl ~ktbl {T. constr ; tyvars; kvars; ty } =
-    let c = instance_constr ~level ~ktbl constr in
-    let ty = instance_type ~level ~tbl ~ktbl ty in
+  let typ_scheme ~ienv ~env {T. constr ; tyvars; kvars; ty } =
+    let c = instance_constr ~ienv constr in
+    let ty = instance_type ~ienv ty in
     let env =
       List.fold_left
         (fun env (t,k) ->
-           let ty = fst @@ Name.Tbl.find tbl t in
-           let kind = T.kscheme (instance_kind ~level ~ktbl k) in
+           let ty = fst @@ Name.Tbl.find ienv.types t in
+           let kind = T.kscheme (instance_kind ~ienv k) in
            Env.add_ty ty kind env)
         env
         tyvars
     in
-    assert (included ktbl kvars);
-    assert (included tbl @@ List.map fst tyvars);
+    assert (included ienv.kinds kvars);
+    assert (included ienv.types @@ List.map fst tyvars);
     (env, c, ty)
 
   let go_constr level constr =
-    let ktbl = Name.Tbl.create 10 in
-    instance_constr ~level ~ktbl constr
+    let ienv = create level in
+    instance_constr ~ienv constr
   let go_kscheme ?(args=[]) level k =
-    let ktbl = Name.Tbl.create 10 in
-    kind_scheme ~level ~kargs:args ~ktbl k
+    let ienv = create level in
+    kind_scheme ~ienv ~kargs:args k
   let go level env ty =
-    let tbl = Name.Tbl.create 10 in
-    let ktbl = Name.Tbl.create 10 in
-    typ_scheme ~level ~env ~tbl ~ktbl ty
+    let ienv = create level in
+    typ_scheme ~ienv ~env ty
 
 end
 let instantiate = Instantiate.go
@@ -341,7 +359,6 @@ module Simplification = struct
       then PosMap.add_ty map name variance
       else map
     | T.App (_, args) ->
-      (* TOFIX : This assumes that constructors are covariant. This is wrong *)
       List.fold_left (fun map t ->
           collect_type ~level ~variance:Invar map t
         ) map args
@@ -360,7 +377,7 @@ module Simplification = struct
 
   
   let collect_kscheme ~level ~variance map = function
-    | {T. kvars = []; constr = []; args = [] ; kind } ->
+    | {T. kvars = []; constr = _; args = [] ; kind } ->
       collect_kind ~level ~variance map kind
     | ksch ->
       fail "Trying to generalize kinda %a. \
@@ -426,7 +443,7 @@ module Generalize = struct
       ) as ty -> ty
   
   let gen_kscheme ~level ~kenv = function
-    | {T. kvars = []; constr = []; args = [] ; kind } ->
+    | {T. kvars = []; constr = _; args = [] ; kind } ->
       gen_kind ~level ~kenv kind
     | ksch ->
       fail "Trying to generalize kinda %a. \
@@ -452,7 +469,7 @@ module Generalize = struct
         else Normal.ctrue, constr
       in
       let no_vars, vars = gen_constraint ~level rest in
-      Normal.(c1 @ no_vars , c2 @ vars)
+      Normal.(c1 &&& no_vars , c2 &&& vars)
 
   let collect_gen_vars ~kenv l =
     let add_if_gen = function
@@ -477,7 +494,7 @@ module Generalize = struct
 
     (* Split the constraints that are actually generalized *)
     let constr_no_var, constr = gen_constraint ~level constr in
-    let constr_all = Normal.(constr_no_var @ constr) in
+    let constr_all = Normal.(constr_no_var &&& constr) in
 
     collect_gen_vars ~kenv constr ;
     let kvars = kinds_as_vars @@ Kind.Set.elements !kenv in
@@ -506,7 +523,7 @@ module Generalize = struct
 
     (* Split the constraints that are actually generalized *)
     let constr_no_var, constr = gen_constraint ~level constr in
-    let constr_all = Normal.(constr_no_var @ constr) in
+    let constr_all = Normal.(constr_no_var &&& constr) in
 
     collect_gen_vars ~kenv constr ;
     let kvars = kinds_as_vars @@ Kind.Set.elements !kenv in
@@ -535,14 +552,14 @@ let rec infer_kind ~level ~env = function
     let constr', kind =
       Instantiate.go_kscheme level ~args @@ Env.find_constr f env
     in
-    Normal.(constr' @ constrs), kind
+    Normal.(constr' &&& constrs), kind
   | T.Tuple args ->
     let constrs, args = infer_kind_many ~level ~env args in
     let _, return_kind = T.kind level in
     let constr_tup =
       Normal.cand @@ List.map (fun k -> Normal.cleq k return_kind) args
     in
-    Normal.(constr_tup @ constrs), return_kind
+    Normal.(constr_tup &&& constrs), return_kind
   | T.Arrow (_, k, _) -> Normal.ctrue, k
   | T.GenericVar n -> Instantiate.go_kscheme level @@ Env.find_ty n env
   | T.Var { contents = T.Unbound (n, _) } ->
@@ -556,8 +573,8 @@ and infer_kind_many ~level ~env l =
   List.fold_right
     (fun ty (constrs, args) ->
        let constr, k = infer_kind ~level ~env ty in
-       Normal.(constr @ constrs) , k::args)
-    l ([], [])
+       Normal.(constr &&& constrs) , k::args)
+    l (Normal.ctrue, [])
 
 module Unif = struct
 
@@ -601,7 +618,7 @@ module Unif = struct
         unify env return_ty1 return_ty2;
       ]
     | T.Tuple tys1, Tuple tys2 ->
-      List.flatten @@ List.map2 (unify env) tys1 tys2
+      Normal.cand @@ List.map2 (unify env) tys1 tys2
 
     | T.Var {contents = Link ty1}, ty2 -> unify env ty1 ty2
     | ty1, T.Var {contents = Link ty2} -> unify env ty1 ty2
@@ -646,16 +663,16 @@ module Pat_modifier = struct
   
 end
 
-let normalize_constr env l =
+let normalize_constr env c =
   let rec unify_all = function
-    | T.Eq (t1, t2) -> Unif.unify env t1 t2
+    | T.TypeLeq (t1, t2) -> Unif.unify env t1 t2
     | T.KindLeq (k1, k2) -> Kind.constr k1 k2
+    | T.HasKind (ty, k) -> has_kind ty k
     | T.And l -> Normal.cand (List.map unify_all l)
-    | T.True -> Normal.ctrue
   in
-  Kind.solve @@ unify_all (T.And l)
+  Kind.solve @@ unify_all c
 
-let normalize (env, constr, ty) = env, normalize_constr env [constr], ty
+let normalize (env, constr, ty) = env, normalize_constr env constr, ty
 
 let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int

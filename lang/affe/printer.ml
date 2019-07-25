@@ -242,11 +242,14 @@ and typ_with_paren env fmt x =
 
 (** Constraints *)
 
-let constr env fmt (k1, k2) =
-  Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
-let constrs env fmt l =
-  let pp_sep fmt () = Format.fprintf fmt " &@ " in
-  Format.fprintf fmt "%a" Format.(pp_print_list ~pp_sep @@ constr env) l
+let rec constrs env fmt (x: Constraint.Normal.t) = match x with
+  | KindLeq (k1, k2) ->
+    Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
+  | HasKind (ty, k) -> 
+    Format.fprintf fmt "(%a : %a)" (typ env) ty (kind env) k
+  | And l ->
+    let pp_sep fmt () = Format.fprintf fmt " &@ " in
+    Format.fprintf fmt "%a" Format.(pp_print_list ~pp_sep @@ constrs env) l
 
 (** Schemes *)
 
@@ -261,7 +264,7 @@ let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
         Format.(pp_print_list ~pp_sep @@ kname ~unbound:false env) kvars
   end;
   begin
-    if c <> [] then
+    if c <> Constraint.Normal.And [] then
       Format.fprintf fmt "%a =>@ " (constrs env) c
   end;
   Format.fprintf fmt "%a"
@@ -288,7 +291,7 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
     end;
   end;
   begin
-    if c <> [] then
+    if c <> Constraint.Normal.And [] then
       Format.fprintf fmt "@[%a@] =>@ " (constrs env) c
   end;
   Fmt.box (typ env) fmt ty;

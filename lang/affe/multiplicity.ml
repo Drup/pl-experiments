@@ -66,7 +66,7 @@ let parallel_merge  (e1 : t) (e2 : t) =
     | Normal _, Borrow _ -> fail x u1 u2
   in
   let m = Name.Map.union aux e1 e2 in
-  m, Constraint.T.True
+  m, Constraint.ctrue
 
 let constraint_all (e : t) bound : constr =
   let aux _ ks l = match ks with
@@ -106,7 +106,7 @@ let exit_binder (e : t) x k : constr * t =
     | Some Shadow _
     | Some Borrow _
     | Some Normal [_]
-      -> True
+      -> Constraint.ctrue
     | None | Some Normal [] | Some Normal _ ->
       Constraint.(k <= Aff Never)
   in

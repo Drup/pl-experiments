@@ -34,52 +34,75 @@ and expr =
   | Region of borrow Name.Map.t * expr
   | Tuple of expr list
 
+type kind =
+  | Unknown
+  | Un | Aff | Lin
+  | KVar of Name.t
 
-module Kind = struct
-  type kind =
+and constraints =
+  | KindLEq of kind * kind
+  | HasKind of typ * kind
+  | And of constraints list
+
+and typ =
+  | App of Name.t * typ list
+  | Arrow of typ * kind * typ
+  | Tuple of typ list
+  | Var of Name.t
+  | Borrow of borrow * kind * typ
+
+module C = struct
+
+  type t = constraints =
+    | KindLEq of kind * kind
+    | HasKind of typ * kind
+    | And of constraints list
+
+  let ctrue : t = And []
+end
+
+module K = struct
+
+  type t = kind = 
     | Unknown
-    | Un
-    | Aff
-    | Lin
+    | Un | Aff | Lin
     | KVar of Name.t
-  
-  type constraints = (kind * kind) list
 
   type scheme = {
     kvars : Name.t list ;
-    constraints : constraints ;
+    constraints : C.t ;
     params : kind list ;
     kind : kind ;
   }
 end
 
-module Ty = struct
+module T = struct
 
-  type typ =
+  type t = typ = 
     | App of Name.t * typ list
-    | Arrow of typ * Kind.kind * typ
+    | Arrow of typ * kind * typ
     | Tuple of typ list
     | Var of Name.t
-    | Borrow of borrow * Kind.kind * typ
+    | Borrow of borrow * kind * typ
 
   type scheme = { 
     kvars : Name.t list ;
-    tyvars : (Name.t * Kind.kind) list ;
-    constraints : Kind.constraints ;
+    tyvars : (Name.t * K.t) list ;
+    constraints : constraints ;
     typ : typ ;
   }
 
   type constructor = {
     name : Name.t ;
-    constraints : Kind.constraints ;
+    constraints : constraints ;
     typ : typ ;
   }
 
   type decl = {
     name : Name.t ;
-    params : (Name.t * Kind.kind) list ;
-    kind : Kind.kind ;
-    constraints : Kind.constraints ;
+    params : (Name.t * kind) list ;
+    kind : kind ;
+    constraints : constraints ;
     constructor : constructor list ;
   }
 
@@ -93,12 +116,12 @@ type decl = {
 
 type def = {
   name : Name.t ;
-  typ : Ty.scheme ;
+  typ : T.scheme ;
 }
 
 type command =
   | ValueDecl of decl
-  | TypeDecl of Ty.decl
+  | TypeDecl of T.decl
   | ValueDef of def
 
 module Rename = struct
@@ -170,24 +193,28 @@ module Rename = struct
     let e = expr env e in
     (pat, e)
 
-  let kind_expr ~kvarenv = function
-    | Kind.KVar {name} -> Kind.KVar (find name kvarenv)
-    | Kind.Un | Kind.Aff | Kind.Lin | Kind.Unknown as k -> k
-  let constrs ~kvarenv l =
-    List.map (fun (k1, k2) -> (kind_expr ~kvarenv k1, kind_expr ~kvarenv k2)) l
-  let rec type_expr ~kvarenv ~tyenv ~tyvarenv = function
-    | Ty.Arrow (ty1, k, ty2) ->
-      Ty.Arrow (type_expr ~kvarenv ~tyenv ~tyvarenv ty1,
+  let rec kind_expr ~kvarenv = function
+    | K.KVar {name} -> KVar (find name kvarenv)
+    | Un | Aff | Lin | Unknown as k -> k
+  and constrs ~kvarenv ~tyenv ~tyvarenv = function
+    | C.KindLEq (k1, k2) ->
+      KindLEq (kind_expr ~kvarenv k1, kind_expr ~kvarenv k2)
+    | HasKind (ty, k) ->
+      HasKind (type_expr ~kvarenv ~tyenv ~tyvarenv ty, kind_expr ~kvarenv k)
+    | And l -> And (List.map (constrs ~kvarenv ~tyenv ~tyvarenv) l)
+  and type_expr ~kvarenv ~tyenv ~tyvarenv = function
+    | T.Arrow (ty1, k, ty2) ->
+      Arrow (type_expr ~kvarenv ~tyenv ~tyvarenv ty1,
                 kind_expr ~kvarenv k,
                 type_expr ~kvarenv ~tyenv ~tyvarenv ty2)
-    | Ty.App ({name}, args) ->
-      Ty.App (find name tyenv, List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
-    | Ty.Tuple (args) ->
-      Ty.Tuple (List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
-    | Ty.Var {name} ->
-      Ty.Var (find name tyvarenv)
-    | Ty.Borrow (r, k, ty) ->
-      Ty.Borrow (r, kind_expr ~kvarenv k, type_expr ~kvarenv ~tyenv ~tyvarenv ty)
+    | App ({name}, args) ->
+      App (find name tyenv, List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
+    | Tuple (args) ->
+      Tuple (List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
+    | Var {name} ->
+      Var (find name tyvarenv)
+    | Borrow (r, k, ty) ->
+      Borrow (r, kind_expr ~kvarenv k, type_expr ~kvarenv ~tyenv ~tyvarenv ty)
 
   let add_kind_var kvarenv {Name. name} =
     match name with
@@ -197,40 +224,40 @@ module Rename = struct
       let n = Name.create ?name () in
       add name n kvarenv, n
   let add_kind_expr kvarenv = function
-    | Kind.KVar name ->
+    | KVar name ->
       let kenv, n = add_kind_var kvarenv name in
-      kenv, Kind.KVar n
-    | Kind.Un | Kind.Aff | Kind.Lin | Kind.Unknown as k -> kvarenv, k
+      kenv, KVar n
+    | Un | Aff | Lin | Unknown as k -> kvarenv, k
   let add_type_param (kvarenv, varenv) (({name} : Name.t), k) =
     let kenv, k = add_kind_expr kvarenv k in
     let n = Name.create ?name () in
     let venv = add name n varenv in
     (kenv, venv), (n,k)
 
-  let kind_scheme {Kind. kvars; params; constraints; kind } =
-    let kenv = SMap.empty in
+  let kind_scheme tyenv {K. kvars; params; constraints; kind } =
+    let kenv = SMap.empty and tyvarenv = SMap.empty in
     let kenv, kvars = CCList.fold_map add_kind_var kenv kvars in
     let kvarenv, params = CCList.fold_map add_kind_expr kenv params in
-    let constraints = constrs ~kvarenv constraints in
+    let constraints = constrs ~kvarenv ~tyvarenv ~tyenv constraints in
     let kind = kind_expr ~kvarenv kind in
-    {Kind. kvars; params; constraints; kind }
+    {K. kvars; params; constraints; kind }
 
-  let type_scheme tyenv {Ty. kvars; tyvars; constraints; typ } =
-    let kenv = SMap.empty and venv = SMap.empty in
+  let type_scheme tyenv {T. kvars; tyvars; constraints; typ } =
+    let kenv = SMap.empty and tyvarenv = SMap.empty in
     let kenv, kvars = CCList.fold_map add_kind_var kenv kvars in
     let (kvarenv, tyvarenv), tyvars =
-      CCList.fold_map add_type_param (kenv, venv) tyvars
+      CCList.fold_map add_type_param (kenv, tyvarenv) tyvars
     in
-    let constraints = constrs ~kvarenv constraints in
+    let constraints = constrs ~kvarenv ~tyvarenv ~tyenv constraints in
     let typ = type_expr ~kvarenv ~tyenv ~tyvarenv typ in
-    {Ty. kvars; tyvars; constraints; typ}
+    {T. kvars; tyvars; constraints; typ}
 
   let rename_constructor
-      ~tyenv ~kvarenv ~tyvarenv  {Ty. name = {name}; constraints; typ} =
+      ~tyenv ~kvarenv ~tyvarenv  {T. name = {name}; constraints; typ} =
     let name = Name.create ?name () in
     let typ = type_expr ~kvarenv ~tyenv ~tyvarenv typ in
-    let constraints = constrs ~kvarenv constraints in
-    {Ty. name; constraints; typ}
+    let constraints = constrs ~kvarenv ~tyvarenv ~tyenv constraints in
+    {T. name; constraints; typ}
   
   type env = {
     env : Name.t SMap.t ;
@@ -254,7 +281,7 @@ module Rename = struct
       let constructor =
         List.map (rename_constructor ~kvarenv ~tyenv ~tyvarenv) constructor
       in
-      let constraints = constrs ~kvarenv constraints in
+      let constraints = constrs ~kvarenv ~tyvarenv ~tyenv constraints in
       let kind = kind_expr ~kvarenv kind in
       TypeDecl { name ; params ; constructor ; constraints ; kind }
     | ValueDef { name = {name} ; typ } ->

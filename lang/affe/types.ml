@@ -59,12 +59,15 @@ and uvar =
   | Link of typ
 
 type constr =
-  | True
-  | Eq of typ * typ
+  | TypeLeq of typ * typ
   | KindLeq of kind * kind
+  | HasKind of typ * kind
   | And of constr list
 
-type normalized_constr = (kind * kind) list
+type normalized_constr =
+  | KindLeq of kind * kind
+  | HasKind of typ * kind
+  | And of normalized_constr list
 
 type scheme = {
   kvars : Name.t list ;
@@ -90,10 +93,10 @@ let kind ?name level =
 let gen_var () = let n = Name.create () in n, GenericVar n
 let gen_kind_var () = let n = Name.create () in n, KGenericVar n
 
-let tyscheme ?(constr=[]) ?(kvars=[]) ?(tyvars=[]) ty =
+let tyscheme ?(constr=And []) ?(kvars=[]) ?(tyvars=[]) ty =
   { constr ; kvars ; tyvars ; ty }
 
-let kscheme ?(constr=[]) ?(kvars=[]) ?(args=[]) kind =
+let kscheme ?(constr=And []) ?(kvars=[]) ?(args=[]) kind =
   { constr ; kvars ; args ; kind }
 
 

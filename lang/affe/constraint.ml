@@ -2,12 +2,25 @@ module T = Types
 
 module Normal = struct
 
-  type t = T.normalized_constr
+  type t = T.normalized_constr =
+    | KindLeq of T.kind * T.kind
+    | HasKind of T.typ * T.kind
+    | And of t list
 
-  let ctrue : t = []
-  let cand : t list -> t = List.flatten
-  let cleq k1 k2 : t = [ (k1, k2) ]
-  let (@) : t -> t -> t = (@)
+  let rec flatten' = function
+    | And l -> flattenL l
+    | c -> [c]
+  and flattenL l = CCList.flat_map flatten' l
+  let cand l : t = match flattenL l with
+    | [c] -> c
+    | l -> And l
+  let flatten c = cand [c]
+
+  let ctrue : t = And []
+  let cleq k1 k2 : t = KindLeq (k1, k2)
+  let hasKind ty k : t = HasKind (ty, k)
+  let (<=) a b : t = KindLeq (a, b)
+  let (&&&) c1 c2 : t = And [c1;c2]
 
 end
 
@@ -208,7 +221,13 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       |> bounds
   end
 
-  let from_normal l =
+  let from_normal c =
+    let rec aux (g, haskinds) (c : Normal.t) = match c with
+      | HasKind (t,k) -> (g, (t,k) :: haskinds)
+      | KindLeq (k1, k2) -> (G.add_edge g k1 k2, haskinds)
+      | And l -> List.fold_left aux (g, haskinds) l
+    in
+    aux c ([], [])
     List.fold_left (fun g (k1, k2) -> G.add_edge g k1 k2) G.empty l
 
   let to_normal g =
@@ -230,10 +249,21 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
    *   |> to_normal *)
 end
 
-let denormal : Normal.t -> T.constr = fun l ->
-  T.And (List.map (fun (k1, k2) -> T.KindLeq (k1, k2)) l)
+let rec denormal : Normal.t -> T.constr = function
+  | And l -> And (List.map denormal l)
+  | KindLeq (k1,k2) -> KindLeq (k1, k2)
+  | HasKind (ty,k) -> HasKind (ty, k)
 
+let ctrue : T.constr = And []
 let (<=) a b : T.constr = T.KindLeq (a, b)
-let (<==) a b : T.constr = T.Eq (a, b)
+let (<==) a b : T.constr = T.TypeLeq (a, b)
 let (&&&) a b : T.constr = T.And [a ; b]
-let cand l : T.constr = T.And l
+
+let rec flatten': T.constr -> T.constr list = function
+  | And l -> flattenL l
+  | c -> [c]
+and flattenL l = CCList.flat_map flatten' l
+let cand l : T.constr = match flattenL l with
+  | [c] -> c
+  | l -> And l
+let flatten c = cand [c]
