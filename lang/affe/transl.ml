@@ -32,9 +32,6 @@ let rec transl_type ~ktbl ~tbl ~level = function
             transl_kind ~ktbl ~level k,
             transl_type ~ktbl ~tbl ~level t)
 
-module FV = Types.Free_vars
-let (+++) = Name.Set.union
-
 let transl_params ~env ~level params = 
   let tbl = Name.Tbl.create 10 in
   let ktbl = Name.Tbl.create 10 in

@@ -106,11 +106,6 @@ module Rename = struct
   
   module SMap = Map.Make(String)
 
-  type env = {
-    env : Name.t SMap.t ;
-    tyenv : Name.t SMap.t ;
-  }
-
   let find x env =
     match x with
     | None -> Name.create ()
@@ -237,6 +232,11 @@ module Rename = struct
     let constraints = constrs ~kvarenv constraints in
     {Ty. name; constraints; typ}
   
+  type env = {
+    env : Name.t SMap.t ;
+    tyenv : Name.t SMap.t ;
+  }
+
   let command { env ; tyenv } = function
     | ValueDecl { rec_flag; name = {name} ; expr = e } ->
       let e = expr env e in

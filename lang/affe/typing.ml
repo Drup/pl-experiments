@@ -824,14 +824,9 @@ let rec infer (env : Env.t) level = function
   | Borrow (r, name) ->
     let _, borrow_k = T.kind level in
     let (name, _), env, constr, var_ty = infer_var env level name in
-    (* let bound_k = match r with
-     *   | Mutable -> T.Aff (Region level)
-     *   | Immutable ->  T.Un (Region level)
-     * in *)
     let mults = Multiplicity.borrow name r borrow_k in 
     let constr = normalize_constr env [
         C.denormal constr;
-        (* C.(bound_k <= borrow_k); *)
       ]
     in
     mults, env, constr, T.Borrow (r, borrow_k, var_ty)
@@ -839,17 +834,12 @@ let rec infer (env : Env.t) level = function
     let _, var_k = T.kind level in
     let _, borrow_k = T.kind level in
     let (name, _), env, constr, var_ty = infer_var env level name in
-    (* let bound_k = match r with
-     *   | Mutable -> T.Aff (Region level)
-     *   | Immutable ->  T.Un (Region level)
-     * in *)
     with_type ~env ~level @@ fun env ty _ ->
     let borrow_ty = T.Borrow (Mutable, var_k, ty) in
     let mults = Multiplicity.borrow name r borrow_k in
     let constr = normalize_constr env [
         C.denormal constr;
         C.(var_ty <== borrow_ty);
-        (* C.(bound_k <= borrow_k); *)
       ]
     in
     mults, env, constr, T.Borrow (r, borrow_k, ty)
