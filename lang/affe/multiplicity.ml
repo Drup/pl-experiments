@@ -15,7 +15,7 @@ let constr_all_kinds ~bound ks =
 
 let merge (e1 : t) (e2 : t) =
   let constr = ref [] in
-  let bound = Un Never in
+  let bound = Kinds.(Constant (Un Never)) in
   let constr_kinds ks =
     constr := (constr_all_kinds ~bound ks) @ !constr
   in
@@ -84,16 +84,17 @@ let exit_region bounded_vars region_level (m0 : t) =
   let constr = ref [] in
   let constr_kinds ks f =
     constr :=
-      (bound_all_kinds (f @@ Region.Region region_level, f @@ Region.Never) ks)
+      (bound_all_kinds
+         (f @@ Kinds.Region.Region region_level, f @@ Kinds.Region.Never) ks)
        @ !constr
   in
   let f var _ m = Name.Map.update var (function
       | None -> None
       | Some Borrow (Mutable, ks) ->
-        constr_kinds ks (fun r -> Aff r);
+        constr_kinds ks (fun r -> Kinds.constant @@ Aff r);
         Some (Shadow Mutable)
       | Some Borrow (Immutable, ks) ->
-        constr_kinds ks (fun r -> Un r);
+        constr_kinds ks (fun r -> Kinds.constant @@ Un r);
         Some (Shadow Immutable)
       | Some b -> (* raise (FailRegion (var,b))) *) Some b)
       m
@@ -108,6 +109,6 @@ let exit_binder (e : t) x k : constr * t =
     | Some Normal [_]
       -> Constraint.ctrue
     | None | Some Normal [] | Some Normal _ ->
-      Constraint.(k <= Aff Never)
+      Constraint.(k <= Kinds.constant @@ Aff Never)
   in
   constr, Name.Map.remove x e

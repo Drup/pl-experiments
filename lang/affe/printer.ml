@@ -184,21 +184,16 @@ let kname ?(unbound=false) env fmt n =
     (get_print_name env kpool n)
 
 let region fmt = function
-  | T.Region.Region i -> digits fmt i
+  | Kinds.Region.Region i -> digits fmt i
   | Never -> Fmt.string fmt "ₙ"
   | Global -> ()
 
-let rec kvar
-  = fun env fmt -> function
-  | T.KUnbound (n,_) -> kname ~unbound:true env fmt n
-  | T.KLink t -> kind env fmt t
-
-and kind env fmt = function
-  | T.Un r -> Format.fprintf fmt "un%a" region r
-  | T.Aff r -> Format.fprintf fmt "aff%a" region r
-  | T.Lin r -> Format.fprintf fmt "lin%a" region r
-  | T.KVar { contents = x } -> kvar env fmt x
-  | T.KGenericVar n -> kname env fmt n
+let kind env fmt = function
+  | Kinds.Constant Un r -> Format.fprintf fmt "un%a" region r
+  | Constant Aff r -> Format.fprintf fmt "aff%a" region r
+  | Constant Lin r -> Format.fprintf fmt "lin%a" region r
+  | Var (n, None) -> kname env fmt n
+  | Var (n, Some _) -> kname ~unbound:true env fmt n
 
 let use env fmt (u : Types.Use.t) = match u with
   | Shadow _ -> Fmt.pf fmt "Shadow"
@@ -224,7 +219,7 @@ and typ
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
       (Format.pp_print_list ~pp_sep @@ typ env) e  name f
-  | T.Arrow (a,T.Un Global,b) ->
+  | T.Arrow (a,Constant Un Global,b) ->
     Format.fprintf fmt "%a -> %a" (typ_with_paren env) a  (typ env) b
   | T.Arrow (a,k,b) ->
     Format.fprintf fmt "%a -{%a}> %a"
@@ -242,7 +237,7 @@ and typ_with_paren env fmt x =
 
 (** Constraints *)
 
-let rec constrs env fmt (x: Constraint.Normal.t) = match x with
+let rec constrs env fmt (x: Types.normalized_constr) = match x with
   | KindLeq (k1, k2) ->
     Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
   | HasKind (ty, k) -> 
@@ -264,7 +259,7 @@ let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
         Format.(pp_print_list ~pp_sep @@ kname ~unbound:false env) kvars
   end;
   begin
-    if c <> Constraint.Normal.And [] then
+    if c <> T.And [] then
       Format.fprintf fmt "%a =>@ " (constrs env) c
   end;
   Format.fprintf fmt "%a"
@@ -291,7 +286,7 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
     end;
   end;
   begin
-    if c <> Constraint.Normal.And [] then
+    if c <> T.And [] then
       Format.fprintf fmt "@[%a@] =>@ " (constrs env) c
   end;
   Fmt.box (typ env) fmt ty;
