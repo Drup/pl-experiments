@@ -21,11 +21,11 @@ type typ =
   | App : Name.t * typ list -> typ
   | Arrow : typ * kind * typ -> typ
   | GenericVar : Name.t -> typ
-  | Var : uvar ref -> typ
+  | Var : tyvar ref -> typ
   | Borrow : Borrow.t * kind * typ -> typ
   | Tuple of typ list
 
-and uvar =
+and tyvar =
   | Unbound of Name.t * level
   | Link of typ
 

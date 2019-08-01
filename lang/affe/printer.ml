@@ -242,12 +242,19 @@ and typ_with_paren env fmt x =
 
 (** Constraints *)
 
+
+let rec flatten' = function
+  | T.And l -> flattenL l
+  | c -> [c]
+and flattenL l = CCList.flat_map flatten' l
+
 let rec constrs env fmt (x: Types.normalized_constr) = match x with
   | KindLeq (k1, k2) ->
     Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
   | HasKind (ty, k) -> 
     Format.fprintf fmt "(%a : %a)" (typ env) ty (kind env) k
   | And l ->
+    let l = flattenL l in
     let pp_sep fmt () = Format.fprintf fmt " &@ " in
     Format.fprintf fmt "%a" Format.(pp_print_list ~pp_sep @@ constrs env) l
 
