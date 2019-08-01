@@ -19,7 +19,6 @@ module Region = struct
 end
 type region = Region.t
 
-
 module Lattice = struct
   type t =
     | Un of Region.t
@@ -74,34 +73,71 @@ end
 
 type level = int
 
+type kind =
+  | Un : region -> kind
+  | Aff : region -> kind
+  | Lin : region -> kind
+  | GenericVar : Name.t -> kind
+  | Var : var ref -> kind
+
+and var =
+  | Unbound of Name.t * level
+  | Link of kind
+
+let un r = Un r
+let aff r = Aff r
+let lin r = Lin r
+
+
+(** Immutable impl, without embedded union find *)
+(* module K = struct
+ *   type t =
+ *     | Var of Name.t * level option
+ *     | Constant of Lattice.t
+ *   let equal l1 l2 = match l1, l2 with
+ *     | Var (n1,_), Var (n2,_) -> Name.equal n1 n2
+ *     | Constant l1, Constant l2 -> Lattice.(l1 = l2)
+ *     | _ -> false
+ *   let hash = Hashtbl.hash
+ *   let compare l1 l2 = if equal l1 l2 then 0 else compare l1 l2
+ * end
+ * 
+ * (\** Utilities for the lattice solver *\)
+ * 
+ * type constant = Lattice.t
+ * let classify = function
+ *   | Constant c -> `Constant c
+ *   | Var _ -> `Var
+ * let constant c = Constant c *)
+
+
 module K = struct
-  type t =
-    | Var of Name.t * level option
-    | Constant of Lattice.t
-  let equal l1 l2 = match l1, l2 with
-    | Var (n1,_), Var (n2,_) -> Name.equal n1 n2
-    | Constant l1, Constant l2 -> Lattice.(l1 = l2)
-    | _ -> false
-  let hash = Hashtbl.hash
-  let compare l1 l2 = if equal l1 l2 then 0 else compare l1 l2
+  type t = kind
+
+  let rec repr = function
+    | Var {contents = Link k} -> repr k
+    | Un _ | Aff _ | Lin _ | GenericVar _
+    | Var {contents = Unbound _} as k -> k
+
+  let equal a b = repr a = repr b
+  let hash x = Hashtbl.hash (repr x)
+  let compare a b = Pervasives.compare (repr a) (repr b)
+
+  type constant = Lattice.t
+  let rec classify = function
+    | Var { contents = Link k } -> classify k
+    | Var { contents = Unbound _ }
+    | GenericVar _ -> `Var
+    | Lin r -> `Constant (Lattice.Lin r)
+    | Aff r -> `Constant (Lattice.Aff r)
+    | Un r -> `Constant (Lattice.Un r)
+  let constant = function
+    | Lattice.Lin r -> Lin r
+    | Lattice.Aff r -> Aff r
+    | Lattice.Un r -> Un r
+
 end
 
 include K
 module Map = Map.Make(K)
 module Set = Set.Make(K)
-
-let un = Constant (Un Global)
-let aff = Constant (Aff Global)
-let lin = Constant (Lin Global)
-
-(** Utilities for the lattice solver *)
-
-type constant = Lattice.t
-let classify = function
-  | Constant c -> `Constant c
-  | Var _ -> `Var
-let constant c = Constant c
-
-(* Select a representant from a list of kinds. *) 
-let unify _l = assert false
-  

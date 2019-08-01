@@ -1,5 +1,6 @@
 type level = int
 
+
 module Borrow = struct
   type t = Syntax.borrow =  Immutable | Mutable
   let equal b1 b2 = match b1, b2 with
@@ -59,9 +60,9 @@ let var ?name level =
   n, Var (ref (Unbound(n, level)))
 let kind ?name level =
   let n = Name.create ?name () in
-  n, Kinds.Var (n, Some level)
+  n, Kinds.Var (ref (Kinds.Unbound(n, level)))
 let gen_var () = let n = Name.create () in n, GenericVar n
-let gen_kind_var () = let n = Name.create () in n, Kinds.Var (n, None)
+let gen_kind_var () = let n = Name.create () in n, Kinds.GenericVar n
 
 let tyscheme ?(constr=And []) ?(kvars=[]) ?(tyvars=[]) ty =
   { constr ; kvars ; tyvars ; ty }
@@ -74,9 +75,11 @@ module Fold = struct
   
   let (++) = Name.Set.union
 
-  let kind (++) z = function
-    | Kinds.Var (n,_) -> (`Kind n) ++ z
-    | _ -> z
+  let rec kind (++) z = function
+    | Kinds.GenericVar n -> (`Kind n) ++ z
+    | Var { contents = Link t } -> kind (++) z t
+    | Var { contents = Unbound (n, _) } -> (`Kind n) ++ z
+    | Un _ | Aff _ | Lin _ -> z
 
   let kinds (++) z l =
     List.fold_left

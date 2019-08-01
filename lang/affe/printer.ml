@@ -188,12 +188,17 @@ let region fmt = function
   | Never -> Fmt.string fmt "ₙ"
   | Global -> ()
 
-let kind env fmt = function
-  | Kinds.Constant Un r -> Format.fprintf fmt "un%a" region r
-  | Constant Aff r -> Format.fprintf fmt "aff%a" region r
-  | Constant Lin r -> Format.fprintf fmt "lin%a" region r
-  | Var (n, None) -> kname env fmt n
-  | Var (n, Some _) -> kname ~unbound:true env fmt n
+let rec kvar
+  = fun env fmt -> function
+  | Kinds.Unbound (n,_) -> kname ~unbound:true env fmt n
+  | Link t -> kind env fmt t
+
+and kind env fmt = function
+  | Kinds.Un r -> Format.fprintf fmt "un%a" region r
+  | Aff r -> Format.fprintf fmt "aff%a" region r
+  | Lin r -> Format.fprintf fmt "lin%a" region r
+  | Var { contents = x } -> kvar env fmt x
+  | GenericVar n -> kname env fmt n
 
 let use env fmt (u : Types.Use.t) = match u with
   | Shadow _ -> Fmt.pf fmt "Shadow"
@@ -219,7 +224,7 @@ and typ
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
       (Format.pp_print_list ~pp_sep @@ typ env) e  name f
-  | T.Arrow (a,Constant Un Global,b) ->
+  | T.Arrow (a, Un Global,b) ->
     Format.fprintf fmt "%a -> %a" (typ_with_paren env) a  (typ env) b
   | T.Arrow (a,k,b) ->
     Format.fprintf fmt "%a -{%a}> %a"

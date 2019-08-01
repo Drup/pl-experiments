@@ -15,7 +15,7 @@ let constr_all_kinds ~bound ks =
 
 let merge (e1 : t) (e2 : t) =
   let constr = ref [] in
-  let bound = Kinds.(Constant (Un Never)) in
+  let bound = Kinds.un Never in
   let constr_kinds ks =
     constr := (constr_all_kinds ~bound ks) @ !constr
   in

@@ -38,11 +38,11 @@ include Zoo.Main (struct
     let harness f =
       let env = Printer.create_naming_env () in
       try f () with
-      | Typing.Unif.Fail (ty1, ty2) ->
+      | Constraint.TypeLeq.Fail (ty1, ty2) ->
         Zoo.error ~kind:"Type error"
           "@[<2>Cannot unify types@ %a@]@ @[<2>and@ %a@]@."
           (Printer.typ env) ty1 (Printer.typ env) ty2
-      | Typing.Kind.Fail (k1, k2) ->
+      | Constraint.KindUnif.Fail (k1, k2) ->
         Zoo.error ~kind:"Kind error"
           "@[<2>Cannot unify kinds@ %a@]@ @[<2>and@ %a@]@."
           (Printer.kind env) k1 (Printer.kind env) k2

@@ -44,12 +44,15 @@ module Generalize = struct
   let update_type ~tyenv k =
     tyenv := Name.Set.add k !tyenv
   
-  let gen_kind ~level ~kenv = function
-    | Kinds.Var (id, Some other_level)
-      when other_level > level ->
+  let rec gen_kind ~level ~kenv = function
+    | Kinds.Var {contents = Unbound(id, other_level)} when other_level > level ->
       update_kind ~kenv id ;
-      Kinds.Var (id, None) 
-    | ( Var _ | Constant _ ) as ty -> ty
+      Kinds.GenericVar id
+    | Var {contents = Link k} -> gen_kind ~level ~kenv k
+    | ( GenericVar _
+      | Var {contents = Unbound _}
+      ) as ty -> ty
+    | (Un _ | Lin _ | Aff _ ) as k -> k
 
   let rec gen_ty ~level ~tyenv ~kenv = function
     | T.Var {contents = Unbound(id, other_level)} when other_level > level ->
@@ -129,7 +132,7 @@ module Generalize = struct
    *   Name.Set.elements @@ T.Free_vars.kinds l *)
 
   let typs ~env ~level constr tys =
-    let constr = Simplification.go ~env ~level ~constr tys [] in
+    let constr = C.simplify ~env ~level [constr] tys [] in
 
     let tyenv = ref Name.Set.empty in
     let kenv = ref Name.Set.empty in
@@ -157,7 +160,7 @@ module Generalize = struct
   let kind ~env ~level constr args k =
     let constr =
       let l = List.map (fun k -> (k, Variance.Neg)) args @ [k, Variance.Pos] in
-      Simplification.go ~env ~level ~constr [] l
+      C.simplify ~env ~level [constr] [] l
     in
 
     let tyenv = ref Name.Set.empty in
@@ -219,7 +222,7 @@ let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int
     | Y ->
       let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kinds.un] Builtin.((a @-> a) @-> a)
+      tyscheme ~tyvars:[name, Kinds.un Global] Builtin.((a @-> a) @-> a)
     | Primitive s ->
       Builtin.(PrimMap.find s primitives)
 
@@ -248,7 +251,7 @@ let rec infer_pattern env level = function
   | PAny ->
     with_type ~env ~level @@ fun env ty k ->
     let constr = C.cand [
-        C.(k <= Constant (Aff Never)) ;
+        C.(k <= Kinds.aff Never) ;
       ]
     in
     env, constr, [], ty
@@ -270,7 +273,7 @@ let rec infer_pattern env level = function
       Instantiate.typ_scheme ~level ~env @@ Env.find constructor env
     in
     let param_ty, top_ty = match constructor_ty with
-      | Types.Arrow (ty1, Constant Un Global, ty2) -> ty1, ty2
+      | Types.Arrow (ty1, Un Global, ty2) -> ty1, ty2
       | _ -> assert false
     in
     let env, constr, params, ty = infer_pattern env level pat in
@@ -370,7 +373,7 @@ let rec infer (env : Env.t) level = function
     (* let constr2, k = infer_kind ~level ~env t in
      * assert (k = Kinds.un) ; *)
     let constr = Constraint.normalize ~level ~env [
-        C.hasKind t Kinds.un ;
+        C.hasKind t @@ Kinds.un Global ;
         C.denormalize constr1;
         (* C.denormalize constr2 *)
       ]
@@ -427,7 +430,7 @@ let rec infer (env : Env.t) level = function
       infer env (level + 1) expr
     in
     let expr_constr = Constraint.normalize ~level ~env [
-        C.(k <= Constant (Un Never)) ;
+        C.(k <= Kinds.un Never) ;
         C.(expr_ty <== ty) ;
         C.denormalize expr_constr
       ]
@@ -591,7 +594,7 @@ let make_type_decl ~env ~constr kargs kind typs =
   in
   (* Format.eprintf "%a@." Printer.kind inferred_k ; *)
   let constr = Constraint.normalize ~level:0 ~env [
-      C.denormalize constr ;
+      constr ;
       C.cand constructor_constrs ;
     ]
   in
@@ -609,7 +612,7 @@ let make_type_decl ~env ~constr kargs kind typs =
   env, kscheme
 
 let make_type_scheme ~env ~constr typ =
-  let constr = Constraint.normalize ~level:0 ~env [C.denormalize constr ] in
+  let constr = Constraint.normalize ~level:0 ~env [constr] in
   let env, leftover_constr, tyscheme =
     Generalize.typ env 0 true constr typ
   in

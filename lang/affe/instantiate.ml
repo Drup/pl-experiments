@@ -10,15 +10,16 @@ let create level = {
   types = Name.Tbl.create 17;
   level;
 }
+let level i = i.level
 
-let instance_kvar ~ienv id =
+let kvar ~ienv id =
   try
     Name.Tbl.find ienv.kinds id
   with Not_found ->
     let b = T.kind ?name:id.name ienv.level in
     Name.Tbl.add ienv.kinds id b ;
     b
-let instance_tyvar ~ienv id =
+let tyvar ~ienv id =
   try
     Name.Tbl.find ienv.types id
   with Not_found ->
@@ -26,14 +27,17 @@ let instance_tyvar ~ienv id =
     Name.Tbl.add ienv.types id b ;
     b
 
-let instance_kind ~ienv = function
-  | Kinds.Var (_, Some _) as k -> k
-  | Var (id, None) -> snd @@ instance_kvar ~ienv id
-  | Constant _ as k -> k
+let rec instance_kind ~ienv = function
+  | Kinds.Var {contents = Link k} as korig ->
+    let knew = instance_kind ~ienv k in
+    if korig = knew then korig else knew
+  | Var {contents = Unbound _} as k -> k
+  | GenericVar id -> snd @@ kvar ~ienv id
+  | Un _ | Aff _ | Lin _ as k -> k
 
 let rec instance_type ~ienv = function
   | T.Var {contents = Link ty} -> instance_type ~ienv ty
-  | T.GenericVar id -> snd @@ instance_tyvar ~ienv id
+  | T.GenericVar id -> snd @@ tyvar ~ienv id
   | T.Var {contents = Unbound _} as ty -> ty
   | T.App(ty, args) ->
     let args = List.map (instance_type ~ienv) args in

@@ -1,92 +1,91 @@
-module STy = Syntax.Ty
-module Skind = Syntax.Kind
+open Syntax
 
-let transl_kind ~ktbl ~level = function
-  | Skind.KVar n ->
-    snd @@ Typing.Instantiate.instance_kvar ~ktbl ~level n
-  | Unknown -> snd @@ Types.kind level
+let transl_kind ~ienv = function
+  | K.KVar n ->
+    snd @@ Instantiate.kvar ~ienv n
+  | Unknown -> snd @@ Types.kind @@ Instantiate.level ienv
   | Un -> Un Global
   | Aff -> Aff Global
   | Lin -> Lin Global
 
-let transl_constr ~ktbl ~level l =
-  List.map
-    (fun (k1, k2) -> (transl_kind ~ktbl ~level k1, transl_kind ~ktbl ~level k2))
-    l
-
-let rec transl_type ~ktbl ~tbl ~level = function
-  | STy.Var n -> 
-    snd @@ Typing.Instantiate.instance_tyvar ~tbl ~level n
+let rec transl_type ~ienv = function
+  | T.Var n -> 
+    snd @@ Instantiate.tyvar ~ienv n
   | App (t, l) ->
-    let tyargs = List.map (transl_type ~ktbl ~tbl ~level) l in
+    let tyargs = List.map (transl_type ~ienv) l in
     App (t, tyargs)
   | Tuple l ->
-    let tyargs = List.map (transl_type ~ktbl ~tbl ~level) l in
+    let tyargs = List.map (transl_type ~ienv) l in
     Tuple tyargs
   | Arrow (t1, k, t2) ->
-    Arrow (transl_type ~ktbl ~tbl ~level t1,
-           transl_kind ~ktbl ~level k,
-           transl_type ~ktbl ~tbl ~level t2)
+    Arrow (transl_type ~ienv t1,
+           transl_kind ~ienv k,
+           transl_type ~ienv t2)
   | Borrow (r, k, t) ->
     Borrow (r,
-            transl_kind ~ktbl ~level k,
-            transl_type ~ktbl ~tbl ~level t)
+            transl_kind ~ienv k,
+            transl_type ~ienv t)
 
-let transl_params ~env ~level params = 
-  let tbl = Name.Tbl.create 10 in
-  let ktbl = Name.Tbl.create 10 in
-
+let rec transl_constr ~ienv = function
+  | C.KindLEq (k1,k2) ->
+    Constraint.cleq (transl_kind ~ienv k1) (transl_kind ~ienv k2)
+  | HasKind (t,k) ->
+    Constraint.hasKind (transl_type ~ienv t) (transl_kind ~ienv k)
+  | And l ->
+    Constraint.cand @@ List.map (transl_constr ~ienv) l
+       
+let transl_params ~env ~ienv params = 
   let env, params =
     List.fold_right (fun (var, kind) (env, params) ->
-        let k = transl_kind ~ktbl ~level kind in
-        let var, ty = Typing.Instantiate.instance_tyvar ~tbl ~level var in
+        let k = transl_kind ~ienv kind in
+        let var, ty = Instantiate.tyvar ~ienv var in
         let schm = Types.kscheme k in
         Env.add_ty var schm env, (var, ty, k)::params)
       params
       (env, [])
   in
-  env, tbl, ktbl, params
+  env, ienv, params
 
-let transl_type_scheme ~env (schm : STy.scheme) =
+let transl_type_scheme ~env (schm : T.scheme) =
   let level = 1 in
-  let env, tbl, ktbl, _tyvars = transl_params ~env ~level schm.tyvars in
-  let constr = transl_constr ~ktbl ~level schm.constraints in
-  let typ = transl_type ~ktbl ~tbl ~level schm.typ in
+  let ienv = Instantiate.create level in
+  let env, ienv, _tyvars = transl_params ~env ~ienv schm.tyvars in
+  let constr = transl_constr ~ienv schm.constraints in
+  let typ = transl_type ~ienv schm.typ in
   let env, scheme = Typing.make_type_scheme ~env ~constr typ in
   env, scheme
 
 let transl_type_constructor
-    ~env ~level params typname constraints (constructor : STy.constructor)
+    ~env ~ienv params typname constraints (constructor : T.constructor)
   =
   let name = constructor.name in
-  let env, tbl, ktbl, params = transl_params ~env ~level params in
   let typarams = List.map (fun (_,ty,_) -> ty) params in
   let constr =
-    transl_constr ~ktbl ~level (constraints @ constructor.constraints)
+    transl_constr ~ienv (C.And [constraints; constructor.constraints])
   in
-  let constructor_typ = transl_type ~ktbl ~tbl ~level constructor.typ in
+  let constructor_typ = transl_type ~ienv constructor.typ in
   let typ = Types.Arrow (constructor_typ, Un Global, App (typname, typarams)) in
   let _env, scheme = Typing.make_type_scheme ~env ~constr typ in
   name, scheme
 
 let transl_decl ~env
-    {STy. name ; params ; constraints; constructor ; kind } =
+    {T. name ; params ; constraints; constructor ; kind } =
   
   let level = 1 in
-
+  let ienv = Instantiate.create level in
+  let env, ienv, params = transl_params ~env ~ienv params in
   let constructor_schemes =
     List.map
-      (transl_type_constructor ~env ~level params name constraints)
+      (transl_type_constructor ~env ~ienv params name constraints)
       constructor
   in
   
-  let env, tbl, ktbl, params = transl_params ~env ~level params in
   let kargs = List.map (fun (_,_,k) -> k) params in
-  let ret_kind = transl_kind ~ktbl ~level kind in
-  let constr = transl_constr ~ktbl ~level constraints in
+  let ret_kind = transl_kind ~ienv kind in
+  let constr = transl_constr ~ienv constraints in
 
   let typs =
-    List.map (fun {STy. typ; _} -> transl_type ~ktbl ~tbl ~level typ) constructor
+    List.map (fun {T. typ; _} -> transl_type ~ienv typ) constructor
   in
 
   let _env, kscheme =

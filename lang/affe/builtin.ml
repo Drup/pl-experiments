@@ -1,6 +1,6 @@
 open Types
 
-let (@->) x y = Arrow (x,Kinds.un,y)
+let (@->) x y = Arrow (x,Kinds.un Global,y)
 let new_y () =
   let y_name = Name.create ~name:"a" () in
   let n = GenericVar y_name in
@@ -8,23 +8,23 @@ let new_y () =
 
 let int_name = Name.create ~name:"int" ()
 let int = App (int_name, [])
-let int_kind = kscheme Kinds.un
+let int_kind = kscheme @@ Kinds.un Global
 
 let array_name = Name.create ~name:"array" ()
 let array x = App (array_name, [x])
 let array_kind =
   let name, k = gen_kind_var () in
-  kscheme ~kvars:[name] ~args:[k] Kinds.aff
+  kscheme ~kvars:[name] ~args:[k] @@ Kinds.aff Global
 
 let unit_name = Name.create ~name:"unit" ()
 let unit_ty = App (unit_name, [])
-let unit_kind = kscheme Kinds.un
+let unit_kind = kscheme @@ Kinds.un Global
 let unit_constr_name = Name.create ~name:"()" ()
 let unit = Syntax.Constructor unit_constr_name
 
 let bool_name = Name.create ~name:"bool" ()
 let bool = App (bool_name, [])
-let bool_kind = kscheme Kinds.un
+let bool_kind = kscheme @@ Kinds.un Global
 let true_constr_name = Name.create ~name:"True" ()
 let true_val = Syntax.Constructor true_constr_name
 let false_constr_name = Name.create ~name:"False" ()
