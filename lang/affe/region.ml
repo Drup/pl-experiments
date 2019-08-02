@@ -83,6 +83,27 @@ let merge2 (e1, vars1) (e2, vars2) =
   let e2 = region vars2 e2 in
   e1, vars, e2
 
+let mergeCase (e1, vars1) (cases, vars2) =
+  let f b1 b2 = match b1, b2 with
+    | None, b | b, None -> None, b, None
+    | Some Immutable, Some Immutable -> None, Some Immutable, None
+    | Some Immutable, Some Mutable -> Some Immutable, Some Mutable, None
+    | Some Mutable, Some b -> Some Mutable, None, Some b
+  in
+  let all_vars = S.union (get_vars vars1) (get_vars vars2) in
+  let vars1, vars, vars2 =
+    S.fold (fun k (ml, mc, mr) ->
+        let bl, bc, br = f (M.find_opt k vars1) (M.find_opt k vars2) in
+        add_opt ml k bl, add_opt mc k bc, add_opt mr k br
+      )
+      all_vars
+      (M.empty, M.empty, M.empty)
+  in
+  let e1 = region vars1 e1 in
+  let cases = List.map (fun (p,e) -> (p, region vars2 e)) cases in
+  e1, vars, cases
+  
+
 let foldAccumInt i0 f l0 =
   let _, l = List.fold_left (fun (i,l) a -> i+1, (f i a :: l)) (i0, []) l0 in
   List.rev l
@@ -125,7 +146,20 @@ let rec annotate (e0 : expr) = match e0 with
     (* assert (M.is_empty _orig_vars); *)
     let e, vars = annotate e in
     region vars e, M.empty
-  | Match (_, _, _) -> assert false
+  | Match (spec, e, cases) ->
+    let a = annotate e in
+    let a_cases =
+      let on_cases (cases, vars) (p,e) =
+        let e, vars' = annotate_with_pat p e in
+        (p,e)::cases,
+        (* TODO: This is not as careful as it should be, we should
+           treat the case where case disagree on borrow specially *)
+        M.union (fun _ b1 b2 -> Some (Types.Borrow.max b1 b2)) vars vars'
+      in
+      List.fold_left on_cases ([],M.empty) cases
+    in
+    let e, vars, cases = mergeCase a a_cases in
+    Match (spec, e, cases), vars
 
 and annotate_with_pat pat e = 
   let e, vars = annotate e in
