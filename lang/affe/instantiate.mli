@@ -15,6 +15,5 @@ val kind_scheme :
 
 val typ_scheme : 
   level:int ->
-  env:('a, kscheme) Env.env ->
   scheme ->
-  ('a, kscheme) Env.env * normalized_constr * typ
+  normalized_constr * typ

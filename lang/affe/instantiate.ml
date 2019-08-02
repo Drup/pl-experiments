@@ -96,19 +96,10 @@ let kind_scheme ?args:(kargs=[]) ~level {T. kvars; constr; args; kind } =
   assert (included ienv.kinds kvars);
   (constr, kind)
 
-let typ_scheme ~level ~env {T. constr ; tyvars; kvars; ty } =
+let typ_scheme ~level {T. constr ; tyvars; kvars; ty } =
   let ienv = create level in
   let c = instance_constr ~ienv constr in
   let ty = instance_type ~ienv ty in
-  let env =
-    List.fold_left
-      (fun env (t,k) ->
-         let ty = fst @@ Name.Tbl.find ienv.types t in
-         let kind = T.kscheme (instance_kind ~ienv k) in
-         Env.add_ty ty kind env)
-      env
-      tyvars
-  in
   assert (included ienv.kinds kvars);
-  assert (included ienv.types @@ List.map fst tyvars);
-  (env, c, ty)
+  assert (included ienv.types tyvars);
+  (c, ty)

@@ -42,7 +42,7 @@ type normalized_constr =
 
 type scheme = {
   kvars : Name.t list ;
-  tyvars : (Name.t * kind) list ;
+  tyvars : Name.t list ;
   constr : normalized_constr ;
   ty : typ ;
 }
@@ -112,7 +112,7 @@ module Fold = struct
 
   let scheme (++) z { tyvars ; ty ; _ } =
     let fv, _ = types (++) z ty in
-    Name.Set.diff fv (Name.Set.of_list @@ List.map fst tyvars)
+    Name.Set.diff fv (Name.Set.of_list tyvars)
 end
 
 module Free_vars = struct

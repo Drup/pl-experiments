@@ -81,12 +81,6 @@ module Generalize = struct
             This kind has already been generalized."
         Printer.kscheme ksch
 
-  let gen_kschemes ~env ~level ~kenv tyset =
-    let get_kind (env : Env.t) id =
-      gen_kscheme ~level ~kenv (Env.find_ty id env)
-    in
-    Name.Set.fold (fun ty l -> (ty, get_kind env ty)::l) tyset []
-
   let rec gen_constraint ~level ~tyenv ~kenv = function
     | Normal.KindLeq (k1, k2) ->
       let old_kenv = !kenv in
@@ -137,17 +131,15 @@ module Generalize = struct
     let tyenv = ref Name.Set.empty in
     let kenv = ref Name.Set.empty in
 
-    (* We built the type skeleton and collect the kindschemes *)
+    (* We built the type skeleton *)
     let tys = List.map (gen_ty ~level ~tyenv ~kenv) tys in
-    let tyvars = gen_kschemes ~env ~level ~kenv !tyenv in
 
     (* Split the constraints that are actually generalized *)
     let constr_no_var, constr = gen_constraint ~level ~tyenv ~kenv constr in
     let constr_all = Normal.(constr_no_var &&& constr) in
 
-    (* collect_gen_vars ~kenv constr ; *)
     let kvars = Name.Set.elements !kenv in
-    let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
+    let tyvars = Name.Set.elements !tyenv in
 
     env, constr_all, List.map (T.tyscheme ~constr ~tyvars ~kvars) tys
 
@@ -174,9 +166,7 @@ module Generalize = struct
     let constr_no_var, constr = gen_constraint ~level ~kenv ~tyenv constr in
     let constr_all = Normal.(constr_no_var &&& constr) in
 
-    (* collect_gen_vars ~kenv constr ; *)
     let kvars = Name.Set.elements !kenv in
-    let env = Name.Set.fold (fun ty env -> Env.rm_ty ty env) !tyenv env in
 
     env, constr_all,
     T.kscheme ~constr ~kvars ~args k
@@ -222,45 +212,49 @@ let constant_scheme = let open T in function
     | Int _ -> tyscheme Builtin.int
     | Y ->
       let name, a = T.gen_var () in
-      tyscheme ~tyvars:[name, Kinds.un Global] Builtin.((a @-> a) @-> a)
+      tyscheme
+        ~tyvars:[name]
+        ~constr:(C.Normal.hasKind a (Kinds.un Global))
+        Builtin.((a @-> a) @-> a)
     | Primitive s ->
       Builtin.(PrimMap.find s primitives)
 
-let constant level env c =
-  let e, constr, ty =
-    Instantiate.typ_scheme ~level ~env @@ constant_scheme c
+let constant ~level c =
+  let constr, ty =
+    Instantiate.typ_scheme ~level @@ constant_scheme c
   in
-  Multiplicity.empty, e, constr, ty
+  Multiplicity.empty, constr, ty
 
-let with_binding env x ty f =
+let with_binding ~env x ty f =
   let env = Env.add x ty env in
   let multis, env, constr, ty = f env in
   let env = Env.rm x env in
   multis, env, constr, ty
 
-let with_type ~env ~level f =
-  let var_name, ty = T.var level in
+let with_type ~env:_ ~level f =
+  let _, ty = T.var level in
   let _, kind = T.kind level in
-  let kind_scheme = T.kscheme kind in
-  let env = Env.add_ty var_name kind_scheme env in
-  f env ty kind
+  let constr = C.hasKind ty kind in
+  (* let env = Env.add_ty var_name kind_scheme env in *)
+  f constr ty kind
 
 let rec infer_pattern env level = function
   | PUnit ->
     env, C.ctrue, [], Builtin.unit_ty
   | PAny ->
-    with_type ~env ~level @@ fun env ty k ->
+    with_type ~env ~level @@ fun constr_ty ty k ->
     let constr = C.cand [
         C.(k <= Kinds.aff Never) ;
+        constr_ty;
       ]
     in
     env, constr, [], ty
   | PVar n ->
-    with_type ~env ~level @@ fun env ty k ->
-    env, C.ctrue, [n, ty, k], ty
+    with_type ~env ~level @@ fun constr_ty ty k ->
+    env, constr_ty, [n, ty, k], ty
   | PConstr (constructor, None) ->
-    let env, constructor_constr, constructor_ty =
-      Instantiate.typ_scheme ~level ~env @@ Env.find constructor env
+    let constructor_constr, constructor_ty =
+      Instantiate.typ_scheme ~level @@ Env.find constructor env
     in
     let top_ty = constructor_ty in
     let constr = C.cand [
@@ -269,8 +263,8 @@ let rec infer_pattern env level = function
     in
     env, constr, [], top_ty
   | PConstr (constructor, Some pat) ->
-    let env, constructor_constr, constructor_ty =
-      Instantiate.typ_scheme ~level ~env @@ Env.find constructor env
+    let constructor_constr, constructor_ty =
+      Instantiate.typ_scheme ~level @@ Env.find constructor env
     in
     let param_ty, top_ty = match constructor_ty with
       | Types.Arrow (ty1, Un Global, ty2) -> ty1, ty2
@@ -307,14 +301,14 @@ and with_pattern
   in
   let tys = List.map (fun (_,t,_) -> t) params in
   let env, constr, schemes = Generalize.typs env level generalize constr tys in
-  let rec with_bindings env (params, schemes) kont = match (params, schemes) with
+  let rec with_bindings ~env (params, schemes) kont = match (params, schemes) with
     | [],[] -> kont env constr input_ty
     | (name, _, _)::params, scheme::schemes ->
-      with_binding env name scheme @@ fun env ->
-      with_bindings env (params, schemes) kont
+      with_binding ~env name scheme @@ fun env ->
+      with_bindings ~env (params, schemes) kont
     | _ -> assert false
   in
-  let mults, env, constrs, ty = with_bindings env (params, schemes) kont in
+  let mults, env, constrs, ty = with_bindings ~env (params, schemes) kont in
   let mults, weaken_consts =
     List.fold_left (fun (m, c') (n,_,k) ->
         let c, m = Multiplicity.exit_binder m n k in m, C.(c &&& c'))
@@ -330,7 +324,9 @@ and with_pattern
 
 
 let rec infer (env : Env.t) level = function
-  | Constant c -> constant level env c
+  | Constant c ->
+    let mults, constr, ty = constant ~level c in
+    mults, env, constr, ty
   | Lambda(param, body) ->
     let _, arrow_k = T.kind level in
     let mults, env, constr, (param_ty, return_ty) =
@@ -345,8 +341,8 @@ let rec infer (env : Env.t) level = function
     mults, env, constr, ty
     
   | Array elems -> 
-    with_type ~level ~env @@ fun env array_ty _ ->
-    let mults, env, constrs, tys = 
+    with_type ~level ~env @@ fun constr_ty array_ty _ ->
+    let mults, env, constrs, tys =
       infer_many env level Multiplicity.empty elems
     in 
     let f elem_ty = C.(elem_ty <== array_ty) in
@@ -354,6 +350,7 @@ let rec infer (env : Env.t) level = function
     let constr = Constraint.normalize ~level ~env [
         constrs ;
         C.cand elem_constr ;
+        constr_ty ;
       ]
     in
     mults, env, constr, Builtin.array array_ty
@@ -367,8 +364,8 @@ let rec infer (env : Env.t) level = function
     in
     mults, env, constr, T.Tuple tys
   | Constructor name ->
-    let env, constr1, t =
-      Instantiate.typ_scheme ~level ~env @@ Env.find name env
+    let constr1, t =
+      Instantiate.typ_scheme ~level @@ Env.find name env
     in
     (* let constr2, k = infer_kind ~level ~env t in
      * assert (k = Kinds.un) ; *)
@@ -397,12 +394,13 @@ let rec infer (env : Env.t) level = function
     let _, var_k = T.kind level in
     let _, borrow_k = T.kind level in
     let (name, _), env, constr, var_ty = infer_var env level name in
-    with_type ~env ~level @@ fun env ty _ ->
+    with_type ~env ~level @@ fun constr_ty ty _ ->
     let borrow_ty = T.Borrow (Mutable, var_k, ty) in
     let mults = Multiplicity.borrow name r borrow_k in
     let constr = Constraint.normalize ~level ~env [
         C.denormalize constr;
         C.(var_ty <== borrow_ty);
+        constr_ty;
       ]
     in
     mults, env, constr, T.Borrow (r, borrow_k, ty)
@@ -424,22 +422,23 @@ let rec infer (env : Env.t) level = function
     in
     mults, env, constr, body_ty
   | Let (Rec, PVar n, expr, body) ->
-    with_type ~env ~level:(level + 1) @@ fun env ty k ->
-    with_binding env n (T.tyscheme ty) @@ fun env ->
+    with_type ~env ~level:(level + 1) @@ fun constr_ty ty k ->
+    with_binding ~env n (T.tyscheme ty) @@ fun env ->
     let mults1, env, expr_constr, expr_ty =
       infer env (level + 1) expr
     in
     let expr_constr = Constraint.normalize ~level ~env [
         C.(k <= Kinds.un Never) ;
         C.(expr_ty <== ty) ;
-        C.denormalize expr_constr
+        C.denormalize expr_constr ;
+        constr_ty ;
       ]
     in
     let generalize = is_nonexpansive expr in
     let env, remaining_constr, scheme =
       Generalize.typ env level generalize expr_constr ty
     in
-    with_binding env n scheme @@ fun env ->
+    with_binding ~env n scheme @@ fun env ->
     let mults2, env, body_constr, body_ty = infer env level body in
     let mults, constr_merge = Multiplicity.merge mults1 mults2 in
     let constr = Constraint.normalize ~level ~env [
@@ -456,7 +455,7 @@ let rec infer (env : Env.t) level = function
 
   | Match (match_spec, expr, cases) ->
     let mults, env, expr_constrs, match_ty = infer env level expr in
-    with_type ~env ~level @@ fun env return_ty _ ->
+    with_type ~env ~level @@ fun constr_ty return_ty _ ->
     let pat_modifier = Pat_modifier.from_match_spec ~level match_spec in
     let aux env case =
       let mults, env, constrs, (pattern, body_ty) =
@@ -480,6 +479,7 @@ let rec infer (env : Env.t) level = function
     let constrs = Constraint.normalize ~level ~env [
         C.denormalize expr_constrs;
         match_constrs ;
+        constr_ty ;
       ]
     in
     mults, env, constrs, return_ty
@@ -488,7 +488,7 @@ let rec infer (env : Env.t) level = function
     infer_app env level fn_expr arg
 
   | Region (vars, expr) ->
-    with_type ~env ~level @@ fun env return_ty return_kind ->
+    with_type ~env ~level @@ fun constr_ty return_ty return_kind ->
     let mults, env, constr, infered_ty = infer env (level+1) expr in
     let mults, exit_constr = Multiplicity.exit_region vars (level+1) mults in 
     let constr = Constraint.normalize ~level ~env [
@@ -496,6 +496,7 @@ let rec infer (env : Env.t) level = function
         C.(infered_ty <== return_ty);
         kind_first_class level return_kind;
         exit_constr;
+        constr_ty;
       ]
     in
     mults, env, constr, return_ty
@@ -514,8 +515,8 @@ and infer_lambda ?pat_modifier env level (pattern, body_expr) =
   mults, env, constr, (input_ty, return_ty)
   
 and infer_var env level name =
-  let env, constr1, t =
-    Instantiate.typ_scheme ~level ~env @@ Env.find name env
+  let constr1, t =
+    Instantiate.typ_scheme ~level @@ Env.find name env
   in
   let _, k = T.kind level in
   (* let constr2, k = infer_kind ~level ~env t in *)
@@ -543,15 +544,15 @@ and infer_many (env0 : Env.t) level mult l =
   in aux mult env0 C.ctrue [] l
 
 and infer_app (env : Env.t) level fn_expr args =
-  let f (f_ty, env) param_ty =
+  let f f_ty param_ty =
     let _, k = T.kind level in
-    with_type ~level ~env @@ fun env return_ty _ ->
-    let constr = C.(f_ty <== T.Arrow (param_ty, k, return_ty)) in
-    (return_ty, env), constr
+    with_type ~level ~env @@ fun constr_ty return_ty _ ->
+    let constr = C.((f_ty <== T.Arrow (param_ty, k, return_ty)) &&& constr_ty) in
+    return_ty, constr
   in
   let mults, env, fn_constr, fn_ty = infer env level fn_expr in
   let mults, env, arg_constr, tys = infer_many env level mults args in
-  let (return_ty, env), app_constr = CCList.fold_map f (fn_ty, env) tys in
+  let return_ty, app_constr = CCList.fold_map f fn_ty tys in
   let constr = Constraint.normalize ~level ~env [
       C.denormalize fn_constr ;
       arg_constr ;
@@ -563,9 +564,15 @@ and infer_app (env : Env.t) level fn_expr args =
 let infer_top env _rec_flag n e =
   let _, env, constr, ty =
     let level = 1 in
-    with_type ~env ~level @@ fun env ty _k ->
-    with_binding env n (T.tyscheme ty) @@ fun env ->
-    infer env level e
+    with_type ~env ~level @@ fun constr_ty ty _k ->
+    with_binding ~env n (T.tyscheme ty) @@ fun env ->
+    let mult, env, constr, ty = infer env level e in
+    let constr = C.normalize ~level ~env [
+        C.denormalize constr;
+        constr_ty;
+      ]
+    in
+    mult, env, constr, ty
   in
   let g = is_nonexpansive e in
   let env, constr, scheme = Generalize.typ env 0 g constr ty in
@@ -575,15 +582,6 @@ let infer_top env _rec_flag n e =
       C.denormalize @@ Instantiate.constr 0 constr
     ]
   in
-
-  (* Remove unused variables in the environment *)
-  let free_vars =
-    Name.Map.fold
-      (fun _ sch e -> Name.Set.union e @@ T.Free_vars.scheme sch)
-      env.vars
-      (T.Free_vars.scheme scheme)
-  in
-  let env = Env.filter_ty (fun n _ -> Name.Set.mem n free_vars) env in
 
   (* assert (constr = C.True) ; *)
   constr, env, scheme

@@ -282,9 +282,6 @@ let kscheme fmt {T. constr = c ; kvars ; args ; kind = k } =
 and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
   let env = create_naming_env () in
   let pp_sep fmt () = Format.fprintf fmt ",@ " in
-  let binding fmt (ty,k) =
-    Format.fprintf fmt "(%a:%a)" (tyname ~unbound:false env) ty (kind env) k
-  in
   Format.pp_open_box fmt 0 ;
   begin
     let has_kinds = not @@ CCList.is_empty kvars in
@@ -293,7 +290,7 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
       Fmt.pf fmt "∀@[";
       Format.(pp_print_list ~pp_sep (kname ~unbound:false env)) fmt kvars ;
       if has_kinds && has_types then pp_sep fmt () ;
-      Format.(pp_print_list ~pp_sep binding) fmt tyvars;
+      Format.(pp_print_list ~pp_sep (tyname ~unbound:false env)) fmt tyvars;
       Fmt.pf fmt "@].@ ";
     end;
   end;
@@ -306,7 +303,6 @@ and scheme fmt {T. constr = c ; tyvars ; kvars ; ty } =
   ()
 
 let env fmt env =
-  let nameenv = create_naming_env () in
   let print_env pp_key pp_val fmt e =
     Format.pp_print_list
       ~pp_sep:Format.pp_print_cut
@@ -323,5 +319,3 @@ let env fmt env =
   Format.fprintf fmt "%a%a%a"
     (print_env "Variables:" name scheme) env.Env.vars
     (print_env "Type Constructors:" name kscheme) env.Env.constr
-    (print_env "Type Variables:"
-       (tyname ~unbound:false nameenv) kscheme) env.Env.types

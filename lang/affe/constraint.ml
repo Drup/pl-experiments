@@ -330,7 +330,6 @@ module Simplification = struct
       let map = collect_kind ~level ~variance map k in
       map
 
-  
   let collect_kscheme ~level ~variance map = function
     | {T. kvars = []; constr = _; args = [] ; kind } ->
       collect_kind ~level ~variance map kind
@@ -339,13 +338,7 @@ module Simplification = struct
             This kind has already been generalized."
         Printer.kscheme ksch
 
-  let collect_kschemes ~env ~level map =
-    Name.Map.fold
-      (fun ty variance map -> 
-         collect_kscheme ~level ~variance map (Env.find_ty ty env))
-      map.PosMap.ty map
-
-  let go ~env ~level constr tys kinds =
+  let go ~env:_ ~level constr tys kinds =
     let map = PosMap.empty in
     let map =
       List.fold_left
@@ -355,7 +348,6 @@ module Simplification = struct
     let map =
       List.fold_left (collect_type ~level ~variance:Pos) map tys
     in
-    let map = collect_kschemes ~env ~level map in
     Solver.solve ~keep_vars:map.kind constr
 end
 

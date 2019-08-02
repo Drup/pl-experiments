@@ -34,23 +34,23 @@ let rec transl_constr ~ienv = function
   | And l ->
     Constraint.cand @@ List.map (transl_constr ~ienv) l
        
-let transl_params ~env ~ienv params = 
-  let env, params =
-    List.fold_right (fun (var, kind) (env, params) ->
+let transl_params ~ienv params = 
+  let constrs, params =
+    List.fold_right (fun (var, kind) (constrs, params) ->
         let k = transl_kind ~ienv kind in
         let var, ty = Instantiate.tyvar ~ienv var in
-        let schm = Types.kscheme k in
-        Env.add_ty var schm env, (var, ty, k)::params)
+        Constraint.(hasKind ty k &&& constrs), (var, ty, k)::params)
       params
-      (env, [])
+      (Constraint.ctrue, [])
   in
-  env, ienv, params
+  constrs, ienv, params
 
 let transl_type_scheme ~env (schm : T.scheme) =
   let level = 1 in
   let ienv = Instantiate.create level in
-  let env, ienv, _tyvars = transl_params ~env ~ienv schm.tyvars in
-  let constr = transl_constr ~ienv schm.constraints in
+  let constr_params, ienv, _tyvars = transl_params ~ienv schm.tyvars in
+  let constr_lit = transl_constr ~ienv schm.constraints in
+  let constr = Constraint.(constr_lit &&& constr_params) in
   let typ = transl_type ~ienv schm.typ in
   let env, scheme = Typing.make_type_scheme ~env ~constr typ in
   env, scheme
@@ -73,7 +73,7 @@ let transl_decl ~env
   
   let level = 1 in
   let ienv = Instantiate.create level in
-  let env, ienv, params = transl_params ~env ~ienv params in
+  let constr_params, ienv, params = transl_params ~ienv params in
   let constructor_schemes =
     List.map
       (transl_type_constructor ~env ~ienv params name constraints)
@@ -82,7 +82,8 @@ let transl_decl ~env
   
   let kargs = List.map (fun (_,_,k) -> k) params in
   let ret_kind = transl_kind ~ienv kind in
-  let constr = transl_constr ~ienv constraints in
+  let constr_lit = transl_constr ~ienv constraints in
+  let constr = Constraint.(constr_lit &&& constr_params) in
 
   let typs =
     List.map (fun {T. typ; _} -> transl_type ~ienv typ) constructor
