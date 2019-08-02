@@ -37,7 +37,7 @@ type constr =
 
 type normalized_constr =
   | KindLeq of kind * kind
-  | HasKind of typ * kind
+  | HasKind of Name.t * typ * kind
   | And of normalized_constr list
 
 type scheme = {
@@ -70,6 +70,9 @@ let tyscheme ?(constr=And []) ?(kvars=[]) ?(tyvars=[]) ty =
 let kscheme ?(constr=And []) ?(kvars=[]) ?(args=[]) kind =
   { constr ; kvars ; args ; kind }
 
+let rec repr = function
+  | Var { contents = Link t } -> repr t
+  | _ as t -> t
 
 module Fold = struct
   
@@ -84,11 +87,6 @@ module Fold = struct
   let kinds (++) z l =
     List.fold_left
       (fun e k -> kind (++) e k)
-      z l
-
-  let constrs (++) z l =
-    List.fold_left
-      (fun z (k1, k2) -> kind (++) (kind (++) z k1) k2)
       z l
 
   let rec types (++) z = function
@@ -110,8 +108,14 @@ module Fold = struct
     | Borrow (_, k, t) ->
       kind (++) (types (++) z t) k 
 
-  let scheme (++) z { tyvars ; ty ; _ } =
-    let fv, _ = types (++) z ty in
+  let rec normalized_constr (++) z = function
+    | KindLeq (k1,k2) -> kind (++) (kind (++) z k1) k2
+    | HasKind (_, t, k) -> kind (++) (types (++) z t) k
+    | And l -> List.fold_left (normalized_constr (++)) z l
+
+  let scheme (++) z { tyvars ; ty ; constr ; _ } =
+    let z' = types (++) z ty in
+    let fv, _ = normalized_constr (++) z' constr in
     Name.Set.diff fv (Name.Set.of_list tyvars)
 end
 
@@ -122,12 +126,12 @@ module Free_vars = struct
     | `Kind x -> Name.Set.add x kfv
   let kind k = Fold.kind fv_red fv_zero k
   let kinds ks = Fold.kinds fv_red fv_zero ks
-  let constrs c = Fold.constrs fv_red fv_zero c
 
   let fv_zero = (Name.Set.empty, Name.Set.empty)
   let fv_red x (fv, kfv) = match x with
     | `Ty x -> Name.Set.add x fv, kfv
     | `Kind x -> fv, Name.Set.add x kfv
+  let normalized_constr c = Fold.normalized_constr fv_red fv_zero c
   let types ty = Fold.types fv_red fv_zero ty
   let scheme s = Fold.scheme fv_red fv_zero s
   let schemes l =

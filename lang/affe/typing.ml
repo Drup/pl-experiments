@@ -72,46 +72,30 @@ module Generalize = struct
     | ( T.GenericVar _
       | T.Var {contents = Unbound _}
       ) as ty -> ty
-  
-  let gen_kscheme ~level ~kenv = function
-    | {T. kvars = []; constr = _; args = [] ; kind } ->
-      gen_kind ~level ~kenv kind
-    | ksch ->
-      fail "Trying to generalize kinda %a. \
-            This kind has already been generalized."
-        Printer.kscheme ksch
 
   let rec gen_constraint ~level ~tyenv ~kenv = function
     | Normal.KindLeq (k1, k2) ->
-      let old_kenv = !kenv in
       let k1 = gen_kind ~level ~kenv k1 in
       let k2 = gen_kind ~level ~kenv k2 in
-      let constr = Normal.cleq k1 k2 in
-      let c1, c2 =
-        if Name.Set.equal old_kenv !kenv
-        then constr, Normal.ctrue
-        else Normal.ctrue, constr
-      in
-      (c1 , c2)
-    | HasKind (t, k) ->
-      let old_kenv = !kenv in
-      let old_tyenv = !tyenv in
+      Normal.cleq k1 k2
+    | HasKind (n, t, k) ->
       let t = gen_ty ~level ~kenv ~tyenv t in
       let k = gen_kind ~level ~kenv k in
-      let constr = Normal.hasKind t k in
-      let c1, c2 =
-        if Name.Set.equal old_kenv !kenv && Name.Set.equal old_tyenv !tyenv
-        then constr, Normal.ctrue
-        else Normal.ctrue, constr
-      in
-      (c1 , c2)
+      Normal.hasKind n t k
     | And l ->
-      List.fold_left
-        (fun (c1,c2) c -> let c1',c2' = gen_constraint ~level ~tyenv ~kenv c in
-          Normal.(c1 &&& c1' , c2 &&& c2'))
-        Normal.(ctrue, ctrue)
-        l
+      Normal.cand @@
+      List.map (gen_constraint ~level ~tyenv ~kenv) l
 
+  let disjoinct s1 s2 = Name.Set.(is_empty @@ inter s1 s2)
+  
+  let filter_constraints ~tyenv ~kenv c =
+    let cs = Normal.flatten' c in
+    let has_genvars c =
+      let fv, kfv = T.Free_vars.normalized_constr c in
+      not (disjoinct fv !tyenv && disjoinct kfv !kenv)
+    in
+    Normal.cand @@ List.filter has_genvars cs
+    
   (* let collect_gen_vars ~kenv l =
    *   let add_if_gen = function
    *     | Kinds.Var (_, None) as k ->
@@ -135,8 +119,8 @@ module Generalize = struct
     let tys = List.map (gen_ty ~level ~tyenv ~kenv) tys in
 
     (* Split the constraints that are actually generalized *)
-    let constr_no_var, constr = gen_constraint ~level ~tyenv ~kenv constr in
-    let constr_all = Normal.(constr_no_var &&& constr) in
+    let constr_all = gen_constraint ~level ~tyenv ~kenv constr in
+    let constr = filter_constraints ~kenv ~tyenv constr_all in
 
     let kvars = Name.Set.elements !kenv in
     let tyvars = Name.Set.elements !tyenv in
@@ -163,8 +147,8 @@ module Generalize = struct
     let args = List.map (gen_kind ~level ~kenv) args in
 
     (* Split the constraints that are actually generalized *)
-    let constr_no_var, constr = gen_constraint ~level ~kenv ~tyenv constr in
-    let constr_all = Normal.(constr_no_var &&& constr) in
+    let constr_all = gen_constraint ~level ~tyenv ~kenv constr in
+    let constr = filter_constraints ~kenv ~tyenv constr_all in
 
     let kvars = Name.Set.elements !kenv in
 
@@ -214,7 +198,7 @@ let constant_scheme = let open T in function
       let name, a = T.gen_var () in
       tyscheme
         ~tyvars:[name]
-        ~constr:(C.Normal.hasKind a (Kinds.un Global))
+        ~constr:(C.Normal.hasKind name a (Kinds.un Global))
         Builtin.((a @-> a) @-> a)
     | Primitive s ->
       Builtin.(PrimMap.find s primitives)

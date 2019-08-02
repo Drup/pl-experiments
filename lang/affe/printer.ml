@@ -251,7 +251,7 @@ and flattenL l = CCList.flat_map flatten' l
 let rec constrs env fmt (x: Types.normalized_constr) = match x with
   | KindLeq (k1, k2) ->
     Format.fprintf fmt "(%a < %a)" (kind env) k1 (kind env) k2
-  | HasKind (ty, k) -> 
+  | HasKind (_, ty, k) -> 
     Format.fprintf fmt "(%a : %a)" (typ env) ty (kind env) k
   | And l ->
     let l = flattenL l in

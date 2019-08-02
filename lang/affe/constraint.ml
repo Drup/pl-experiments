@@ -7,7 +7,7 @@ module Normal = struct
 
   type t = T.normalized_constr =
     | KindLeq of T.kind * T.kind
-    | HasKind of T.typ * T.kind
+    | HasKind of Name.t * T.typ * T.kind
     | And of t list
 
   let rec flatten' = function
@@ -21,9 +21,10 @@ module Normal = struct
 
   let ctrue : t = And []
   let cleq k1 k2 : t = KindLeq (k1, k2)
-  let hasKind ty k : t = HasKind (ty, k)
+  let hasKind n ty k : t = HasKind (n, ty, k)
   let (<=) a b : t = KindLeq (a, b)
   let (&&&) c1 c2 : t = And [c1;c2]
+  let (=~) a b : t = (a <= b) &&& (b <= a)
 
 end
 
@@ -42,23 +43,23 @@ module HasKind = struct
       let constr', kind =
         Instantiate.kind_scheme ~level ~args @@ Env.find_constr f env
       in
-      Normal.(constr' &&& constrs &&& (kind <= expected_kind))
+      Normal.(constr' &&& constrs &&& (kind =~ expected_kind))
     | T.Tuple args ->
       let constrs, ks =
         constraint_kinds ~level ~env args
       in
       let constr_tup =
-        Normal.cand @@ List.map (fun k -> Normal.cleq k expected_kind) ks
+        Normal.cand @@ List.map (fun k -> Normal.(k =~ expected_kind)) ks
       in
       Normal.(constr_tup &&& constrs)
     | T.Arrow (_, k, _) ->
-      Normal.(k <= expected_kind)
+      Normal.(k =~ expected_kind)
     | T.Borrow (_, k, _) ->
-      Normal.(k <= expected_kind)
+      Normal.(k =~ expected_kind)
     | T.GenericVar _ ->
       assert false
-    | T.Var { contents = T.Unbound (_, _) } ->
-      Normal.hasKind typ expected_kind
+    | T.Var { contents = T.Unbound (id, _) } ->
+      Normal.hasKind id typ expected_kind
     | T.Var { contents = T.Link ty } ->
       constraint_kind ~level ~env ty expected_kind
 
@@ -216,24 +217,31 @@ module Collect = struct
 
   type t = {
     kindleq : Solver.G.t ;
-    haskind : (T.typ * T.kind) list ;
+    haskind : (T.typ * T.kind list) Name.Map.t ;
   }
 
   let empty = {
     kindleq = Solver.G.empty ;
-    haskind = [] ;
+    haskind = Name.Map.empty ;
   }
   let kindleq c (k1,k2) =
     { c with kindleq = Solver.G.add_edge c.kindleq k1 k2 }
   let kindleqs c l = List.fold_left kindleq c l
 
-  let haskind c (t,k) =
-    { c with haskind = (t,k) :: c.haskind }
+  let haskind c (n,t,k) =
+    let haskind = Name.Map.update n (function
+        | None -> Some (Types.repr t,[k])
+        | Some (t',ks) ->
+          assert (t == Types.repr t');
+          Some (t, k::ks))
+        c.haskind
+    in
+    {c with haskind }
   let haskinds c l = List.fold_left haskind c l
 
   let rec normal c = function
     | Normal.KindLeq (k1,k2) -> kindleq c (k1,k2)
-    | Normal.HasKind (t,k) -> haskind c (t,k)
+    | Normal.HasKind (id,t,k) -> haskind c (id,t,k)
     | And l -> List.fold_left normal c l
 
   let desugar ~level ~env (c : T.constr) =
@@ -253,28 +261,50 @@ module Collect = struct
     let rec aux acc = function
       | T.KindLeq (k1, k2) ->
         normal acc @@ KindLeq.mk k1 k2
-      | T.HasKind (ty, k) -> 
+      | T.HasKind (_, ty, k) -> 
         normal acc @@ HasKind.mk ~level ~env ty k
       | T.And l ->
         List.fold_left aux acc l
     in
     aux empty c 
-  
-  let to_normal { haskind ; kindleq } =
-    let c = Normal.cand @@ List.map (fun (t,k) -> Normal.hasKind t k) haskind in
-    Solver.G.fold_edges
-      (fun k1 k2 l -> Normal.(cleq k1 k2 &&& l) )
-      kindleq
-      c
+
 end
 
+let extract {Collect. haskind ; kindleq } =
+  let add_cycle g0 l0 =
+    let rec add_edges g = function
+      | [] | [_] -> g
+      | k1::k2::l -> add_edges (Solver.G.add_edge g k1 k2) (k2::l)
+    in
+    match l0 with 
+      | [] -> g0
+      | [k] -> Solver.G.add_vertex g0 k
+      | k::_ -> add_edges g0 (l0@[k])
+  in
+  let kinds_clusters, remaining_haskind =
+    let aux n (t,ks) (ls, cstrs) =
+      (ks::ls, (n,t,ks)::cstrs)
+    in
+    Name.Map.fold aux haskind ([],[])
+  in
+  let g =
+    List.fold_left add_cycle kindleq kinds_clusters
+  in
+  g, remaining_haskind
+
 let normalize ~level ~env l =
-  let {Collect. haskind ; kindleq } = Collect.desugar ~level ~env @@ And l in
-  let kindleq = Solver.solve kindleq in
-  let t = {Collect. haskind ; kindleq } in
-  Collect.to_normal t
-
-
+  let t = Collect.desugar ~level ~env @@ And l in
+  let g, haskind_raw = extract t in
+  let g = Solver.solve g in
+  let kindleq_constr =
+    Normal.cand @@
+    Solver.G.fold_edges (fun k1 k2 l -> Normal.(k1 <= k2) :: l) g []      
+  in
+  let haskind_constr =
+    Normal.cand @@
+    List.map (fun (n,t,k) -> Normal.hasKind n t @@ List.hd k) haskind_raw
+  in
+  Normal.(kindleq_constr &&& haskind_constr)
 
 module Simplification = struct
   open Variance
@@ -282,6 +312,8 @@ module Simplification = struct
   module PosMap = struct
     type bimap = { ty : Variance.Map.t ; kind : variance Solver.Map.t }
     let empty = { ty = Variance.Map.empty ; kind = Solver.Map.empty }
+    let get_ty m ty = Variance.Map.get m.ty ty
+    let mem_ty m ty = Variance.Map.mem m.ty ty
     let add_ty m ty v =
       { m with ty = Variance.Map.add m.ty ty v }
     let add_kind m k v =
@@ -330,15 +362,14 @@ module Simplification = struct
       let map = collect_kind ~level ~variance map k in
       map
 
-  let collect_kscheme ~level ~variance map = function
-    | {T. kvars = []; constr = _; args = [] ; kind } ->
-      collect_kind ~level ~variance map kind
-    | ksch ->
-      fail "Trying to generalize kinda %a. \
-            This kind has already been generalized."
-        Printer.kscheme ksch
-
-  let go ~env:_ ~level constr tys kinds =
+  let collect_haskinds ~level map l =
+    let f map (n, _ty, ks) =
+      List.fold_left
+        (collect_kind ~level ~variance:(PosMap.get_ty map n)) map ks
+    in
+    List.fold_left f map l
+  
+  let collect ~env:_ ~level tys kinds haskinds =
     let map = PosMap.empty in
     let map =
       List.fold_left
@@ -348,19 +379,36 @@ module Simplification = struct
     let map =
       List.fold_left (collect_type ~level ~variance:Pos) map tys
     in
-    Solver.solve ~keep_vars:map.kind constr
+    let map = collect_haskinds ~level map haskinds in      
+    map
 end
 
 let simplify ~level ~env l tys kinds =
-  let {Collect. haskind ; kindleq } = Collect.from_normal ~level ~env @@ And l in
-  let kindleq = Simplification.go ~level ~env kindleq tys kinds in
-  let t = {Collect. haskind ; kindleq } in
-  Collect.to_normal t
+  let t = Collect.from_normal ~level ~env @@ And l in
+  let g, haskind_raw = extract t in
+  let posmap = Simplification.collect ~level ~env tys kinds haskind_raw in
+  let g = Solver.solve ~keep_vars:posmap.kind g in
+  let kindleq_constr =
+    Normal.cand @@
+    Solver.G.fold_edges (fun k1 k2 l -> Normal.(k1 <= k2) :: l) g []      
+  in
+  let haskind_constr =
+    Normal.cand @@
+    CCList.filter_map
+      (fun (n,t,ks) ->
+         let k = Kinds.repr @@ List.hd ks in
+         if Simplification.PosMap.mem_ty posmap n || Solver.G.mem_vertex g k
+         then Some (Normal.hasKind n t k)
+         else None
+      )
+      haskind_raw
+  in
+  Normal.(haskind_constr &&& kindleq_constr)
 
 let rec denormalize : Normal.t -> T.constr = function
   | And l -> And (List.map denormalize l)
   | KindLeq (k1,k2) -> KindLeq (k1, k2)
-  | HasKind (ty,k) -> HasKind (ty, k)
+  | HasKind (_,ty,k) -> HasKind (ty, k)
 
 let ctrue : T.constr = And []
 let cleq k1 k2 : T.constr = KindLeq (k1, k2)

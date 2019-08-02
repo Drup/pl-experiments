@@ -61,8 +61,9 @@ let instance_constr ~ienv c =
     | KindLeq (k1, k2) ->
       KindLeq (instance_kind ~ienv k1,
                instance_kind ~ienv k2)
-    | HasKind (t, k) ->
-      HasKind (instance_type ~ienv t,
+    | HasKind (id, t, k) ->
+      let id, _ = tyvar ~ienv id in
+      HasKind (id, instance_type ~ienv t,
                instance_kind ~ienv k)
   in 
   aux c
