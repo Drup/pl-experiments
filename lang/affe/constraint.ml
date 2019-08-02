@@ -397,7 +397,8 @@ let simplify ~level ~env l tys kinds =
     CCList.filter_map
       (fun (n,t,ks) ->
          let k = Kinds.repr @@ List.hd ks in
-         if Simplification.PosMap.mem_ty posmap n || Solver.G.mem_vertex g k
+         if Simplification.PosMap.mem_ty posmap n ||
+            (Kinds.classify k = `Var && Solver.G.mem_vertex g k)
          then Some (Normal.hasKind n t k)
          else None
       )
