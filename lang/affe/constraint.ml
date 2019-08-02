@@ -38,18 +38,19 @@ module HasKind = struct
 
   let rec constraint_kind ~level ~env typ expected_kind = match typ with
     | T.App (f, args) ->
+      (* TODO This assumes everything is covariant, which is wrong *)
       let constrs, args =
         constraint_kinds ~level ~env args in
       let constr', kind =
         Instantiate.kind_scheme ~level ~args @@ Env.find_constr f env
       in
-      Normal.(constr' &&& constrs &&& (kind =~ expected_kind))
+      Normal.(constr' &&& constrs &&& (kind <= expected_kind))
     | T.Tuple args ->
       let constrs, ks =
         constraint_kinds ~level ~env args
       in
       let constr_tup =
-        Normal.cand @@ List.map (fun k -> Normal.(k =~ expected_kind)) ks
+        Normal.cand @@ List.map (fun k -> Normal.(k <= expected_kind)) ks
       in
       Normal.(constr_tup &&& constrs)
     | T.Arrow (_, k, _) ->
@@ -364,8 +365,11 @@ module Simplification = struct
 
   let collect_haskinds ~level map l =
     let f map (n, _ty, ks) =
-      List.fold_left
-        (collect_kind ~level ~variance:(PosMap.get_ty map n)) map ks
+      if PosMap.mem_ty map n then 
+        List.fold_left
+          (collect_kind ~level ~variance:(PosMap.get_ty map n)) map ks
+      else
+        map
     in
     List.fold_left f map l
   
