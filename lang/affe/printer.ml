@@ -155,24 +155,24 @@ let get_print_name env pool n =
   match Name.Tbl.find_opt env.tbl n with
   | Some n -> n
   | None ->
-    begin
+    let s =
       match n.name with
       | None ->
         let name = fresh_name pool env.used in
-        Name.Tbl.add env.tbl n name;
         UsedNames.add env.used name 1;
         name
       | Some name ->
         begin match UsedNames.find_opt env.used name with
           | None ->
-            Name.Tbl.add env.tbl n name;
             UsedNames.add env.used name 1;
             name
           | Some i ->
             UsedNames.add env.used name (i+1);
             name ^ string_of_int i
         end
-    end 
+    in
+    Name.Tbl.add env.tbl n s;
+    s
 
 let typool = "abcdef"
 let tyname ?(unbound=false) env fmt n = 
