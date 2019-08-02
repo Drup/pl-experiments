@@ -236,6 +236,7 @@ constraints: l=separated_nonempty_list (COMMA, constr) { C.And l }
 constr:
   | k1=kind_expr LESS k2=kind_expr { C.KindLEq (k1, k2) }
   | k1=kind_expr GREATER k2=kind_expr { C.KindLEq (k2, k1) }
+  | t=type_expr DOUBLECOLON k=kind_expr { C.HasKind (t, k) }
 
 type_quantifier:
   | LPAREN t=type_var_binding RPAREN {t}
