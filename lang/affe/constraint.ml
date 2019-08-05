@@ -84,7 +84,7 @@ module TypeLeq = struct
       | T.Var {contents = T.Link ty} -> f ty
       | T.GenericVar _ -> assert false
       | T.Var ({contents = T.Unbound(other_id, other_level)} as other_tvar) ->
-        if other_id = tvar_id then
+        if Name.equal other_id tvar_id then
           fail "Recursive types"
         else
           other_tvar := Unbound(other_id, min tvar_level other_level)
@@ -123,7 +123,7 @@ module TypeLeq = struct
     | ty1, T.Var {contents = Link ty2} -> unify ~level ~env ty1 ty2
 
     | T.Var {contents = Unbound(id1, _)},
-      T.Var {contents = Unbound(id2, _)} when id1 = id2 ->
+      T.Var {contents = Unbound(id2, _)} when Name.equal id1 id2 ->
       (* There is only a single instance of a particular type variable. *)
       assert false
 
@@ -152,7 +152,7 @@ module KindUnif = struct
       | Var {contents = Link k} -> f k
       | GenericVar _ -> assert false
       | Var ({contents = Unbound(other_id, other_level)} as other_tvar) ->
-        if other_id = tvar_id then
+        if Name.equal other_id tvar_id then
           fail "Recursive types"
         else
           other_tvar := Unbound(other_id, min tvar_level other_level)
@@ -233,7 +233,7 @@ module Collect = struct
     let haskind = Name.Map.update n (function
         | None -> Some (Types.repr t,[k])
         | Some (t',ks) ->
-          assert (t == Types.repr t');
+          assert (CCEqual.physical t (Types.repr t'));
           Some (t, k::ks))
         c.haskind
     in

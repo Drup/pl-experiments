@@ -57,7 +57,7 @@ let mergeL l =
     | Some `Immutable, Some Immutable -> None
     | Some `Immutable, Some Mutable -> assert false
     | Some `OneMutable j, b ->
-      if i < j then b else assert false
+      if i <= j then b else assert false
     | Some `Many, b -> b
   in
   let update_all i (e, m) = region (update_all (update_one i) m) e in

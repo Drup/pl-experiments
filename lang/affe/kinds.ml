@@ -24,7 +24,7 @@ module Lattice = struct
     | Un of Region.t
     | Aff of Region.t
     | Lin of Region.t
-  let (<) l1 l2 = match l1, l2 with
+  let leq l1 l2 = match l1, l2 with
     | Lin r1, Lin r2
     | Aff r1, Aff r2
     | Un r1, Un r2 -> Region.compare r1 r2 <= 0
@@ -33,7 +33,7 @@ module Lattice = struct
     | Un r1, Aff r2 | Un r1, Lin r2 | Aff r1, Lin r2 ->
       Region.compare r1 r2 <= 0
     | _ -> false
-  let (=) l1 l2 = match l1, l2 with
+  let equal l1 l2 = match l1, l2 with
     | Lin r1, Lin r2
     | Aff r1, Aff r2
     | Un r1, Un r2 -> Region.equal r1 r2
@@ -67,7 +67,7 @@ module Lattice = struct
   let relations consts =
     let consts = constants @ consts in
     CCList.product (fun l r -> l, r) consts consts
-    |> CCList.filter (fun (l, r) -> l < r)
+    |> CCList.filter (fun (l, r) -> leq l r)
 end
 
 

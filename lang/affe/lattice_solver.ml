@@ -1,7 +1,7 @@
 module type LAT = sig
   type t
-  val (<) : t -> t -> bool
-  val (=) : t -> t -> bool
+  val leq : t -> t -> bool
+  val equal : t -> t -> bool
   val biggest : t
   val smallest : t
   val least_upper_bound : t list -> t
@@ -129,7 +129,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let cleanup_edge v1 v2 g =
       match K.classify v1, K.classify v2 with
       | `Constant l1, `Constant l2 ->
-        if Lat.(l1 < l2) then g
+        if Lat.leq l1 l2 then g
         else raise (IllegalEdge (l1, l2))
       | _ -> G.add_edge g v1 v2
     in
