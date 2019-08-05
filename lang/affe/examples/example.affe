@@ -1,5 +1,4 @@
 let id = fun x -> x
-let get = fun x -> get x 0
 let id2 = id id
 let x =
   let x = id2 3 in

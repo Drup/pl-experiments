@@ -67,8 +67,8 @@ let iter_integers =
   in
   aux
 
-# This function takes a closure of type `int -{^a}> unit`
-# Where `^a` is a *kind* variable that must respect the constraints `^a < unₙ`
+# This function takes a closure of type `int -{^k}> unit`
+# Where `^a` is a *kind* variable that must respect the constraints `^k < unₙ`
 #
 # Indeed, the closure is called multiple time. if it captured anything linear,
 # it could use it multiple time!

@@ -1,0 +1,27 @@
+type ('a : 'k) option : 'k = None of unit | Some of 'a
+
+type ('a : 'k) queue : 'k 
+
+val qcreate : \ ('a : _) . unit -> 'a queue
+val qpush : \ 'k2 ('a : 'k) . 'a -> &('k2, 'a queue) -{'k}> unit
+val qpop : \ 'k2 ('a : _) . &('k2, 'a queue) -> 'a option
+val qiter : \ ('a :_) . ('a -> unit) -> 'a queue -> unit
+
+type ('a: 'k) pool : 'k = Pool of ((unit -> 'a) * 'a queue)
+let create f = Pool (f, qcreate())
+
+let consume f c = match c with {
+  | Pool (_cre,q) -> qiter f q
+  }
+
+let use p f = 
+  match p with { Pool (cr, q) ->
+  let o = 
+  match qpop &q with {
+    | Some x -> x
+    | None () -> cr ()
+  } in
+  let r = f &!o in
+  let () = qpush o &q in
+  r
+  }

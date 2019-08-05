@@ -11,22 +11,22 @@ let add k v t =
   match& t with {
   | A tbl ->
     let tbl' = array_init (n+1) (fun i -> array_get (tbl,i)) in
-    let () = {tbl'| array_set (&!tbl', n, (k,v)) } in
+    let () = array_set (&!tbl', n, (k,v)) in
     A tbl'
   }
 
 # val findi : \ ('a:un) ('b:'k2) . 'a -> &(('a,'b) assoc,_) -> int
 
 # let get k (A tbl) =
-#   let n = {tbl| array_length &tbl } in
-#   let j = {tbl| findi k &tbl } in
+#   let n = { array_length &tbl } in
+#   let j = { findi k &tbl } in
 #   let f = fun i ->
 #     match i < j with {
 #       | True -> array_get (&tbl,i)
 #       | False -> array_get (&tbl,i+1)
 #     }
 #   in
-#   let tbl' = {tbl| array_init (n+1) f } in
+#   let tbl' = { array_init (n+1) f } in
 #   let tbl' =
 
 val create : \ ('a:un) ('b:'k) . unit -> ('a, 'b) assoc
