@@ -24,7 +24,7 @@ let get (x, i) = x.(i)
 let copy a = array_init (array_length a) (fun i -> a.(i))
 let set (a, i, x) =
   let a2 = copy a in
-  let x = {(&!a2).(i) <- x} in
+  let x = (&!a2).(i) <- x in
   a2
 let set_mut (a, i, x) = a.(i) <- x
 
@@ -81,15 +81,15 @@ let singleton n = add empty n
 # Remove the number `n` from the line after `(i0,j0)`
 let remove_line i0 j0 g n =
   for (j0+1) (size - 1) (fun j -> 
-    let cell = { rm (get &&g (i0 , j)) n } in
-    {set_mut &&!g (i0, j) cell}
+    let cell =  rm (get &&g (i0 , j)) n  in
+    set_mut &&!g (i0, j) cell
   )
 
 # Remove the number `n` from the column after `(i0,j0)`
 let remove_column i0 j0 g n =
   for (i0+1) (size - 1) (fun i ->
-    let cell = { rm (get &&g (i , j0)) n } in
-    {set_mut &&!g (i , j0) cell}
+    let cell =  rm (get &&g (i , j0)) n  in
+    set_mut &&!g (i , j0) cell
   )
 
 # Remove the number `n` from the square containing `(i0,j0)`
@@ -100,8 +100,8 @@ let remove_square i0 j0 g n =
     for (3*pos_j) (3*(pos_j+1) - 1) (fun j ->
       match and (i = i0) (j = j0) with {
         | False ->
-           let cell = { rm (get &&g (i , j)) n } in
-           {set_mut &&!g (i , j) cell}
+           let cell =  rm (get &&g (i , j)) n  in
+           set_mut &&!g (i , j) cell
          | True ->
            ()
       }
@@ -113,9 +113,9 @@ let remove_square i0 j0 g n =
 # This is perfectly allowed, since no reference to the borrow
 # is kept.
 let remove i j g n =
-  let () = { remove_line i j &&!g n } in
-  let () = { remove_column i j &&!g n } in
-  let () = { remove_square i j &&!g n } in
+  let () =  remove_line i j &&!g n  in
+  let () =  remove_column i j &&!g n  in
+  let () =  remove_square i j &&!g n  in
   ()
 
 let is_valid g =
@@ -147,9 +147,9 @@ let solve =
       let (new_i, new_j) = next_pos (i,j) in
       let try_solution n =
         let new_g = set &g (i,j) (singleton n) in
-        let () = { remove i j &!new_g n } in
-        match { is_valid &new_g } with {
-        | True -> { solve new_i new_j new_g }
+        let () = remove i j &!new_g n  in
+        match is_valid &new_g with {
+        | True -> solve new_i new_j new_g
         | False -> ()
         }
       in
