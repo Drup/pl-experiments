@@ -311,27 +311,32 @@ module Simplification = struct
   open Variance
 
   module PosMap = struct
-    type bimap = { ty : Variance.Map.t ; kind : variance Solver.Map.t }
-    let empty = { ty = Variance.Map.empty ; kind = Solver.Map.empty }
+    type bimap = {
+      ty : Variance.Map.t ;
+      kind : (Kinds.t * variance) Name.Map.t ;
+    }
+    let empty = { ty = Variance.Map.empty ; kind = Name.Map.empty }
     let get_ty m ty = Variance.Map.get m.ty ty
     let mem_ty m ty = Variance.Map.mem m.ty ty
+    let mem_kind m k = Name.Map.mem k m.kind
     let add_ty m ty v =
       { m with ty = Variance.Map.add m.ty ty v }
-    let add_kind m k v =
-      let add m k v =
-        Solver.Map.update
-          k (function None -> Some v | Some v' -> Some (merge v v')) m
-      in { m with kind = add m.kind k v }
+    let add_kind m n k v =
+      let newkindmap =
+        Name.Map.update
+          n (function None -> Some (k,v) | Some (k,v') -> Some (k,merge v v'))
+          m.kind
+      in { m with kind = newkindmap }
     let add_kinds m k v =
       let f m set var =
-        Solver.Set.fold (fun name m -> Solver.Map.add name var m) set m
+        Name.Set.fold (fun name m -> Name.Map.add name var m) set m
       in { m with kind = f m.kind k v }
   end
 
   let rec collect_kind ~level ~variance map = function
-    | Kinds.Var {contents = Unbound(_, other_level)} as k
+    | Kinds.Var {contents = Unbound(n, other_level)} as k
       when other_level > level ->
-      PosMap.add_kind map k variance
+      PosMap.add_kind map n k variance
     | Var {contents = Link ty} -> collect_kind ~level ~variance map ty
     | ( GenericVar _
       | Var {contents = Unbound _}
@@ -397,12 +402,28 @@ let simplify ~level ~env l tys kinds =
     Solver.G.fold_edges (fun k1 k2 l -> Normal.(k1 <= k2) :: l) g []      
   in
   let haskind_constr =
+    let is_relevant_constr n k =
+      let is_relevant_type = Simplification.PosMap.mem_ty posmap n in
+      let is_relevant_kind = Simplification.PosMap.mem_ty posmap n in
+      let is_kindconst =
+          match Kinds.classify k with
+          | `Var _ -> false
+          | `Constant _ -> true
+      in
+      let constrained_kindvar =
+        match Kinds.classify k with
+        | `Var _ ->
+          Solver.G.mem_vertex g k &&
+          Solver.G.out_degree g k + Solver.G.in_degree g k > 0
+        | `Constant _ -> false
+      in
+      is_relevant_type && (is_relevant_kind || is_kindconst) || constrained_kindvar
+    in
     Normal.cand @@
     CCList.filter_map
       (fun (n,t,ks) ->
-         let k = Kinds.repr @@ List.hd ks in
-         if Simplification.PosMap.mem_ty posmap n ||
-            (Kinds.classify k = `Var && Solver.G.mem_vertex g k)
+         let k = List.hd ks in
+         if is_relevant_constr n k
          then Some (Normal.hasKind n t k)
          else None
       )

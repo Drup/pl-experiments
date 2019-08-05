@@ -126,8 +126,8 @@ module K = struct
   type constant = Lattice.t
   let rec classify = function
     | Var { contents = Link k } -> classify k
-    | Var { contents = Unbound _ }
-    | GenericVar _ -> `Var
+    | Var { contents = Unbound (n,_) }
+    | GenericVar n -> `Var n
     | Lin r -> `Constant (Lattice.Lin r)
     | Aff r -> `Constant (Lattice.Aff r)
     | Un r -> `Constant (Lattice.Un r)

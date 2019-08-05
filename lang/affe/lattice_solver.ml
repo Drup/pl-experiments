@@ -18,7 +18,7 @@ module type KINDS = sig
   type constant
   val constant : constant -> t
 
-  val classify : t -> [> `Var | `Constant of constant ]
+  val classify : t -> [> `Var of Name.t | `Constant of constant ]
   val unify : t list -> t
 end
 
@@ -41,13 +41,13 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   exception IllegalBounds of K.constant * K.t * K.constant
   
   let add_extra_vars map g =
-    Map.fold (fun k _ g -> G.add_vertex g k) map g
+    Name.Map.fold (fun _ (k,_) g -> G.add_vertex g k) map g
   
   let add_lattice_inequalities g0 =
     let constants = 
       G.fold_vertex List.cons g0 []
       |> CCList.filter_map
-        (fun x -> match K.classify x with `Var -> None | `Constant c -> Some c)
+        (fun x -> match K.classify x with `Var _ -> None | `Constant c -> Some c)
     in
     let relations = Lat.relations constants in
     List.fold_left
@@ -58,7 +58,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
   let lattice_closure g0 =
     let constant_subgraph =
       let aux v g = match K.classify v with
-        | `Var -> G.remove_vertex g v
+        | `Var _ -> G.remove_vertex g v
         | `Constant _ -> g
       in
       G.fold_vertex aux g0 g0
@@ -67,7 +67,7 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let constant_check = Check.create constant_subgraph in
     let constants, vars =
       let f k (cl,vl) = match K.classify k with
-        | `Var -> (cl, k :: vl)
+        | `Var _ -> (cl, k :: vl)
         | `Constant c -> ((k, c) :: cl, vl)
       in G.fold_vertex f g0 ([],[])
     in
@@ -140,8 +140,8 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     let unused_variables vars g0 =
       let cleanup_vertex v g =
         match K.classify v with
-        | `Var when not (Map.mem v vars) -> G.remove_vertex g v
-        | `Var | `Constant _ -> g
+        | `Var n when not (Name.Map.mem n vars) -> G.remove_vertex g v
+        | `Var _ | `Constant _ -> g
       in
       G.fold_vertex cleanup_vertex g0 g0
 
@@ -172,8 +172,14 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
       List.fold_left add_minified_edge G.empty remaining_edges
 
     let simplify_with_position variance_map g0 =
+      let get_pos v = match K.classify v with
+        | `Constant _ -> None
+        | `Var n -> match Name.Map.find_opt n variance_map with
+          | Some (_,v) -> Some v
+          | None -> None
+      in
       let p (v1, v2) =
-        match Map.find_opt v1 variance_map, Map.find_opt v2 variance_map with
+        match get_pos v1, get_pos v2 with
         | Some Variance.(Neg | Bivar), Some _ when G.out_degree g0 v1 = 1 -> true
         | _, Some Variance.(Pos | Bivar) when G.in_degree g0 v2 = 1 -> true
         | _ -> false
@@ -201,8 +207,8 @@ module Make (Lat : LAT) (K : KINDS with type constant = Lat.t) = struct
     |> add_lattice_inequalities
     |> lattice_closure
     |> unify_clusters
-    |> check_constants
     |> Simplify.go keep_vars
+    |> check_constants
 
   (* let simplify ?keep_vars l =
    *   from_normal l
