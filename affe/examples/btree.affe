@@ -10,4 +10,4 @@ val close : btree -> unit
 
 val split : \ 'k . &!('k,btree) -> &!('k,btree) * value * data * &!('k, btree)
 
-type ('a, 'k) iter : 'k = ('a -> unit) -{'k}> unit
+type ('a, 'k) iter : 'k = Iter of ('a -> unit) -{'k}> unit
