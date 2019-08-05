@@ -26,9 +26,9 @@ let rec digits fmt i =
   end
 
 let name_with_digits fmt {Name. name ; id } =
-  Format.fprintf fmt "%s%a" (CCOpt.get_or ~default:"_" name)  digits id
+  Format.fprintf fmt "%s%a" (CCOpt.get_or ~default:"" name)  digits id
 let name_no_digits fmt {Name. name ; _ } =
-  Format.fprintf fmt "%s" (CCOpt.get_or ~default:"_" name)
+  Format.fprintf fmt "%s" (CCOpt.get_or ~default:"" name)
 
 let name = if !debug then name_with_digits else name_no_digits
 
@@ -176,12 +176,20 @@ let get_print_name env pool n =
 
 let typool = "abcdef"
 let tyname ?(unbound=false) env fmt n = 
-  Format.fprintf fmt "'%s%s" (if unbound then "_" else "")
-    (get_print_name env typool n)
+  if !debug then
+    Format.fprintf fmt "^%s%a" (if unbound then "_" else "")
+      name_with_digits n
+  else
+    Format.fprintf fmt "'%s%s" (if unbound then "_" else "")
+      (get_print_name env typool n)
 let kpool = "klmn"
 let kname ?(unbound=false) env fmt n =
-  Format.fprintf fmt "^%s%s" (if unbound then "_" else "")
-    (get_print_name env kpool n)
+  if !debug then
+    Format.fprintf fmt "^%s%a" (if unbound then "_" else "")
+      name_with_digits n
+  else
+    Format.fprintf fmt "^%s%s" (if unbound then "_" else "")
+      (get_print_name env kpool n)
 
 let region fmt = function
   | Kinds.Region.Region i -> digits fmt i
