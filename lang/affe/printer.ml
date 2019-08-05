@@ -98,7 +98,7 @@ let rec expr
         (Fmt.list ~sep case) l
     | Region (ns, e) ->
       let pp fmt () =
-        Fmt.pf fmt "%a | %a"
+        Fmt.pf fmt "@[<h>%a|@]@ %a"
           Fmt.(iter_bindings ~sep:sp Name.Map.iter (pair name nop)) ns expr e
       in
       Fmt.braces pp fmt ()
@@ -220,14 +220,16 @@ let rec tyvar
 
 and typ
   = fun env fmt -> function
-  | T.App (f,[]) ->
-    name fmt f
   | T.Borrow (r, k, t) ->
     Format.fprintf fmt "&%s(%a,%a)" (borrow r) (kind env) k (typ env) t
   | T.Tuple l ->
     let pp_sep fmt () = Format.fprintf fmt " *@ " in
     Format.fprintf fmt "@[<2>%a@]"
       (Format.pp_print_list ~pp_sep @@ typ env) l
+  | T.App (f,[]) ->
+    name fmt f
+  | T.App (f,[e]) ->
+    Format.fprintf fmt "@[<2>%a@ %a@]" (typ env) e  name f
   | T.App (f,e) ->
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
     Format.fprintf fmt "@[<2>(%a)@ %a@]"
