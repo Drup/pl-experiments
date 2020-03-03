@@ -46,6 +46,7 @@ let mk_set a i x : expr = App (mk_var "array_set", [Tuple [a;i;x]])
 
 %nonassoc IN
 %nonassoc LEFTARROW
+%right SEMI
 %right RIGHTARROW DASHLACCO RACCOGREATER
 %nonassoc FUN
 /* %left FUNAPP */
@@ -79,6 +80,8 @@ command:
 expr:
   | e=simple_expr /* %prec below_DOT */
     { e }
+  | e1=expr SEMI e2=expr
+    { Sequence (e1, e2) }
   | f=simple_expr l=list_expr /* %prec FUNAPP */
     { App (f,List.rev l) }
   | e1=expr op=binop e2=expr
@@ -105,7 +108,7 @@ simple_expr:
       | l -> Tuple l
     }
   | LACCO e=expr RACCO { Region (Name.Map.empty, e) }
-  | LBRACKPIPE l=separated_list(SEMI, expr) PIPERBRACK { Array l }
+  | LBRACKPIPE l=separated_list(SEMI, simple_expr) PIPERBRACK { Array l }
   | b=borrow name=name { Borrow (b, name) }
   | AND b=borrow name=name { ReBorrow (b, name) }
   | s=simple_expr DOT LPAREN i=expr RPAREN { mk_get s i }

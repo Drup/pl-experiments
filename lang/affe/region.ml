@@ -176,7 +176,12 @@ let rec annotate (e0 : expr) = match e0 with
     let a1 = annotate e1 in
     let a2 = annotate_with_pat pat e2 in
     let e1, vars, e2 = merge2 a1 a2 in
-    Let (recflag, pat, e1, e2), vars    
+    Let (recflag, pat, e1, e2), vars
+  | Sequence (e1, e2) ->
+    let a1 = annotate e1 in
+    let a2 = annotate e2 in
+    let e1, vars, e2 = merge2 a1 a2 in
+    Sequence (e1, e2), vars
   | App (e, l) ->
     let e, vars = annotate e in
     let al = List.map annotate l in

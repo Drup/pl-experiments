@@ -25,7 +25,8 @@ let rec is_nonexpansive = function
   | App (Constructor _, l) ->
     List.for_all is_nonexpansive l
   | Region (_, e) -> is_nonexpansive e
-  | Let (_, _, e1, e2) ->
+  | Let (_, _, e1, e2)
+  | Sequence (e1, e2) ->
     is_nonexpansive e1 && is_nonexpansive e2
   | Match (_, e, l) ->
     is_nonexpansive e &&
@@ -405,6 +406,21 @@ let rec infer (env : Env.t) level = function
       ]
     in
     mults, env, constr, body_ty
+  | Sequence (expr1, expr2) ->
+    let mults1, env, expr1_constr, expr1_ty =
+      infer env level expr1
+    in
+    let mults2, env, expr2_constr, expr2_ty =
+      infer env level expr2 in
+    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
+    let constr = Constraint.normalize ~level ~env [
+        C.(expr1_ty <== Builtin.unit_ty) ;
+        C.denormalize expr1_constr ;
+        C.denormalize expr2_constr ;
+        constr_merge ;
+      ]
+    in
+    mults, env, constr, expr2_ty
   | Let (Rec, PVar n, expr, body) ->
     with_type ~env ~level:(level + 1) @@ fun constr_ty ty k ->
     with_binding ~env n (T.tyscheme ty) @@ fun env ->

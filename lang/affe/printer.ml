@@ -102,6 +102,8 @@ let rec expr
           Fmt.(iter_bindings ~sep:sp Name.Map.iter (pair name nop)) ns expr e
       in
       Fmt.braces pp fmt ()
+    | Sequence (e1, e2) ->
+      Format.fprintf fmt "@[%a;@ %a@]" expr e1 expr e2
 
 and expr_with_paren fmt x =
   let must_have_paren = match x with
@@ -109,6 +111,7 @@ and expr_with_paren fmt x =
     | Let _
     | Match _
     | Lambda _
+    | Sequence _
       -> true
     | Constant _
     | Array _

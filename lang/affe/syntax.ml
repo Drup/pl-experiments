@@ -33,6 +33,7 @@ and expr =
   | Match of match_spec * expr * lambda list
   | Region of borrow Name.Map.t * expr
   | Tuple of expr list
+  | Sequence of expr * expr
 
 type kind =
   | Unknown
@@ -187,6 +188,8 @@ module Rename = struct
       let e = expr env e in
       let l = List.map (lambda env) l in
       Match (b, e, l)
+    | Sequence (e1, e2) ->
+      Sequence (expr env e1, expr env e2)
 
   and lambda env (pat, e) = 
     let env, pat = pattern env pat in
