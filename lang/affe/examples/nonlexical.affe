@@ -1,0 +1,6 @@
+let ignore _ = ()
+
+let f x =
+  let y = &x in
+  ignore y;
+  &!x
