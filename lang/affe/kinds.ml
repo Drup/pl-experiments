@@ -121,7 +121,7 @@ module K = struct
 
   let equal a b = repr a = repr b
   let hash x = Hashtbl.hash (repr x)
-  let compare a b = Pervasives.compare (repr a) (repr b)
+  let compare a b = compare (repr a) (repr b)
 
   type constant = Lattice.t
   let rec classify = function

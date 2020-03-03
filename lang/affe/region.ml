@@ -18,7 +18,7 @@ let region ns e =
   let m = get_borrows ns in
   if M.is_empty m then e else Region (m, e)
 
-let get_vars m = M.keys m |> S.of_seq
+let get_vars m = M.keys m |> S.of_iter
 let add_opt m k b = match b with
   | None -> m
   | Some v -> M.add k v m
