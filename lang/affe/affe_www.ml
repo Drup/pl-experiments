@@ -10,10 +10,10 @@ let doc =
  In particular, Affe is functional with arbitrary side effects and
  complete type inference (i.e., users never need to write type annotations).
 </p>
-<p>
+<!--<p>
   The implementation is available
   <a href="https://github.com/Drup/pl-experiments">on github</a>.
-</p>
+</p>-->
 <p>
 You can find a list of examples below. Only typing is implemented is this
 online demo. The result of the typing (or the appropriate type error) is displayed
