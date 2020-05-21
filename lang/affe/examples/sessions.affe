@@ -12,8 +12,10 @@ type ('a: 'k, 'b: 'k) either = Left of 'a | Right of 'b
 # Here, we just state them without any implemnetation
 
 type empty : un
+# Type aliases are not implemented, so we expand ot and it in the rest of the file.
 # type ('a : _) ot : lin = (empty, 'a) st
 # type ('a : _) it : lin = ('a, empty) st
+
 type ('a : _, 'b: _) st : lin # This is the only linearity annotation in the whole file
 
 val receive:

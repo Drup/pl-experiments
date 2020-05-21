@@ -1,4 +1,4 @@
-# type ('a : 'k) t : aff = 'a array
+import "array.affe"
 
 let get (x, i) =
   x.(i)

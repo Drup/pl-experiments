@@ -1,4 +1,3 @@
-# type unit : un
 # type ('a : 'k) array : aff constraints 'k < aff
 val array_init : \ 'k ('a : _). int -> (int -{'k}> 'a) -{'k}> 'a array
 val array_free : \ ('a : _). 'a array -> unit
