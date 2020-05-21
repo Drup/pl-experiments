@@ -1,0 +1,12 @@
+id : ∀^k, 'a. ('a : ^k) => 'a -> 'a
+
+id2 : ('_a -> '_a)
+
+x : int -> int
+
+a : int
+
+plusa : int -> int
+
+c : int
+

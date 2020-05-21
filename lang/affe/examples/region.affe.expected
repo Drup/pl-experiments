@@ -1,0 +1,10 @@
+ignore : ∀^k, 'a. ('a : ^k) & (^k < affₙ) => 'a -> unit
+
+x : int
+
+t1 : int
+
+t2 : unit
+
+t3 : ∀^k, 'a. ('a : ^k) => 'a -> unit
+

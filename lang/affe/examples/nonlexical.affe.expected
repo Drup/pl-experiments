@@ -1,0 +1,5 @@
+ignore : ∀^k, 'a. ('a : ^k) & (^k < affₙ) => 'a -> unit
+
+Kind error: Cannot unify kinds un₄
+and lin₃
+

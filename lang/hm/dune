@@ -5,9 +5,3 @@
   (name hm)
   (libraries zoo_native)
 )
-
-(alias
- (name   runtest)
- (action (ignore-stdout (run ./hm.exe %{deps})))
- (deps (glob_files "*.hm"))
-)

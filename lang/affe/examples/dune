@@ -1,0 +1,56 @@
+(* -*- tuareg -*- *)
+
+let succes = [
+  "array.affe";
+  "region.affe";
+  "basics.affe";
+  "cow.affe";
+  "sessions.affe";
+  "channel.affe";
+  "patmatch.affe";
+  "sudoku.affe";
+  "constructors.affe";
+  "example.affe";
+  "pool.affe";
+  "test_un.affe";
+]
+
+let fail = [
+  "fail.affe";
+  "nonlexical.affe";
+]
+
+
+
+let stanza_success s =
+  Format.asprintf {|
+(rule
+ (deps ../affe.exe (glob_files *.affe))
+ (action
+   (with-outputs-to %s.output (run ./../affe.exe %s))))
+
+(rule
+ (alias runtest)
+ (action (diff %s.expected %s.output)))
+|}
+    s s s s
+
+let stanza_fail s =
+  Format.asprintf {|
+(rule
+ (deps ../affe.exe (glob_files *.affe))
+ (action
+   (with-accepted-exit-codes (not 0)
+    (with-outputs-to %s.output
+     (run ./../affe.exe %s)))))
+
+(rule
+ (alias runtest)
+ (action (diff %s.expected %s.output)))
+|}
+    s s s s
+
+let () =
+  Jbuild_plugin.V1.send @@ String.concat "\n"
+    (List.map stanza_success succes
+     @ List.map stanza_fail fail)

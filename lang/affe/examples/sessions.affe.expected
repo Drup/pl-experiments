@@ -1,0 +1,37 @@
+type either = ∀^k. ^k -> ^k -> ^k
+constructor Left : ∀'b, 'a. 'a -> ('a, 'b) either
+constructor Right : ∀'b, 'a. 'b -> ('a, 'b) either
+type empty = un
+type st = ∀^k, ^l. ^l -> ^k -> lin
+receive :
+  ∀^k, ^l, ^m, 'm1, 'b, 'a. ('a : ^m) & ('b : ^l) & ('m1 : ^k) =>
+  ('m1 * ('a, 'b) st, empty) st -> 'm1 * ('a, 'b) st
+send :
+  ∀^k, ^l, ^m, 'm1, 'b, 'a. ('a : ^m) & ('b : ^l) & ('m1 : ^k) =>
+  'm1 -> (empty, 'm1 * ('a, 'b) st) st -{^k}> ('b, 'a) st
+create :
+  ∀^k, ^l, 'b, 'a. ('a : ^l) & ('b : ^k) => unit -> ('a, 'b) st * ('b, 'a) st
+close : (empty, empty) st -> unit
+select :
+  ∀^k, ^l, ^m, 'm1, 'b, 'a. ('a : ^m) & ('b : ^l) & ('m1 : ^k) =>
+  (('a, 'b) st -> 'm1) -> (empty, 'm1) st -> ('b, 'a) st
+branch : ∀^k, 'm. ('m : ^k) => ('m, empty) st -> 'm
+op_client :
+  ∀^k, ^l, ^m, ^n, 'm1, 'm2, 'a.
+  ('a : ^n) & ('m2 : ^m) & ('m1 : ^k) & (^k < ^l) & (lin < ^l) =>
+  (empty, 'm1 * ('m2 * (empty, 'a * (empty, empty) st) st, empty) st) st -> 'm1 -{lin}> 'm2 -{^l}> 'a
+
+add_service :
+  (int * (int * (empty, int * (empty, empty) st) st, empty) st, empty) st -> unit
+
+dec_service : (int * (empty, int * (empty, empty) st) st, empty) st -> unit
+
+math_service :
+  (((int * (int * (empty, int * (empty, empty) st) st, empty) st, empty) st,
+     (int * (empty, int * (empty, empty) st) st, empty) st) either,
+    empty) st -> unit
+
+main1 : unit -> int
+
+main2 : unit -> int
+

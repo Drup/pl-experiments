@@ -24,9 +24,3 @@
   (preprocess (pps tyxml-ppx))
   (js_of_ocaml)
 )
-
-(alias
- (name   runtest)
- (action (run ./affe.exe %{deps}))
- (deps (glob_files "examples/*.affe"))
-)

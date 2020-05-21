@@ -1,0 +1,6 @@
+array_init :
+  ∀^k, ^k1, 'a. ('a : ^k) => int -> (int -{^k1}> 'a) -{^k1}> 'a array
+array_free : ∀^k, 'a. ('a : ^k) => 'a array -> unit
+array_length : ∀^k, ^k1, 'a. ('a : ^k) => &(^k1,'a array) -> int
+array_get : ∀^k, ^k1, 'a. ('a : ^k) => &(^k1,'a array) * int -> 'a
+array_set : ∀^k, ^k1, 'a. ('a : ^k) => &!(^k1,'a array) * int * 'a -> unit

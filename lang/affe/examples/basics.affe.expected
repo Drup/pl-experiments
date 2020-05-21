@@ -1,0 +1,10 @@
+id : ∀^k, 'a. ('a : ^k) => 'a -> 'a
+
+app :
+  ∀^k, ^l, ^m, 'a, 'b. ('b : ^m) & ('a : ^l) =>
+  ('a -{^k}> 'b) -> 'a -{^k}> 'b
+
+ignore : ∀^k, 'a. ('a : ^k) & (^k < affₙ) => 'a -> unit
+
+plus : int -> int -> int
+

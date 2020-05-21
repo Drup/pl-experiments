@@ -1,0 +1,18 @@
+type option = ∀^k. ^k -> ^k
+constructor None : ∀'a. unit -> 'a option
+constructor Some : ∀'a. 'a -> 'a option
+type queue = ∀^k. ^k -> ^k
+qcreate : ∀^k, 'a. ('a : ^k) => unit -> 'a queue
+qpush : ∀^k, ^k2, 'a. ('a : ^k) => 'a -> &(^k2,'a queue) -{^k}> unit
+qpop : ∀^k, ^k2, 'a. ('a : ^k) => &(^k2,'a queue) -> 'a option
+qiter : ∀^k, 'a. ('a : ^k) => ('a -> unit) -> 'a queue -> unit
+type pool = ^_k -> ^_k
+constructor Pool : ∀'a. unit -> 'a * 'a queue -> 'a pool
+create : ∀^k, 'a. ('a : ^k) => (unit -> 'a) -> 'a pool
+
+consume : ∀^k, 'a. ('a : ^k) => ('a -> unit) -> 'a pool -> unit
+
+use :
+  ∀^k, ^l, ^m, 'a, 'a1. ('a1 : ^m) & ('a : ^l) & (^l < lin₁) =>
+  'a1 pool -> (&!(aff₄,'a1) -{^k}> 'a) -{^m}> 'a
+

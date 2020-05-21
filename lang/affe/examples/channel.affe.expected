@@ -1,0 +1,13 @@
+type string = un
+type channel = aff
+open : string -> channel
+close : channel -> unit
+send : int -> channel -> channel
+receive : channel -> int * channel
+echo_once : string -> unit
+
+with_channel : ∀^k. string -> (channel -{^k}> channel) -> unit
+
+iter_integers :
+  ∀^k. (^k < unₙ) => (int -{^k}> unit) -> int -{^k}> int -{^k}> unit
+

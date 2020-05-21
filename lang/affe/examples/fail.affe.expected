@@ -1,0 +1,4 @@
+type channel = lin
+create : unit -> channel
+close : channel -> unit
+Type error: The kind inequality lin < ^_k < affₙ is not satisfiable.

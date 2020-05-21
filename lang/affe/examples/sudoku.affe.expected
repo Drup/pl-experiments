@@ -1,0 +1,62 @@
+array_init :
+  ∀^k, ^k1, 'a. ('a : ^k) => int -> (int -{^k1}> 'a) -{^k1}> 'a array
+array_free : ∀^k, 'a. ('a : ^k) => 'a array -> unit
+array_length : ∀^k, ^k1, 'a. ('a : ^k) => &(^k1,'a array) -> int
+array_get : ∀^k, ^k1, 'a. ('a : ^k) => &(^k1,'a array) * int -> 'a
+array_set : ∀^k, ^k1, 'a. ('a : ^k) => &!(^k1,'a array) * int * 'a -> unit
+get : ∀^k, ^l, 'a. ('a : ^l) => &(^k,'a array) * int -> 'a
+
+copy : ∀^k, ^l, 'a. ('a : ^l) & (^k < unₙ) => &(^k,'a array) -> 'a array
+
+set :
+  ∀^k, ^l, 'a. ('a : ^l) & (^k < unₙ) =>
+  &(^k,'a array) * int * 'a -> 'a array
+
+set_mut : ∀^k, ^l, 'a. ('a : ^l) => &!(^k,'a array) * int * 'a -> unit
+
+not : bool -> bool
+and : bool -> bool -> bool
+type intset = un
+empty : intset
+add : intset -> int -> intset
+rm : intset -> int -> intset
+iter_set : ∀^k. (int -{^k}> unit) -> intset -{^k}> unit
+cardinal : intset -> int
+print : ∀^k. &(^k,intset array) -> unit
+size : int
+
+full_cell : intset
+
+singleton : int -> intset
+
+get : ∀^k, ^l, 'a. ('a : ^l) => &(^k,'a array) -> int * int -{^k}> 'a
+
+set_mut :
+  ∀^k, ^l, 'a. ('a : ^l) =>
+  &!(^k,'a array) -> int * int -{^k}> 'a -{^k}> unit
+
+set :
+  ∀^k, ^l, 'a. ('a : ^l) & (^k < unₙ) =>
+  &(^k,'a array) -> int * int -{^k}> 'a -{^k}> 'a array
+
+for_all :
+  ∀^k, ^k2, ^k1, 'a. ('a : ^k) =>
+  ('a -{^k2}> bool) -> &(^k1,'a array) -{^k2}> bool
+for : ∀^k. (^k < unₙ) => int -> int -> (int -{^k}> unit) -> unit
+
+remove_line : ∀^k. int -> int -> &!(^k,intset array) -> int -> unit
+
+remove_column : ∀^k. int -> int -> &!(^k,intset array) -> int -> unit
+
+remove_square : ∀^k. int -> int -> &!(^k,intset array) -> int -> unit
+
+is_valid : ∀^k. &(^k,intset array) -> bool
+
+is_solved : ∀^k. &(^k,intset array) -> bool
+
+next_pos : int * int -> int * int
+
+remove : ∀^k. int -> int -> &!(^k,intset array) -> int -> unit
+
+solve : int -> int -> intset array -> unit
+

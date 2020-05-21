@@ -1,0 +1,6 @@
+type t = ∀^k. ^k -> ^k
+constructor Foo : ∀^k, 'a. ('a -{^k}> 'a) -> 'a t
+f : ∀^k, 'a. ('a : ^k) => 'a t
+
+y : int
+
