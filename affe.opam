@@ -18,4 +18,6 @@ depends: [
   "iter"
   "fmt"
   "ocamlgraph"
+  "linenoise"
+  "ppx_deriving"
 ]

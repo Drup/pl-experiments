@@ -41,6 +41,7 @@ To build manually, up-to-date versions of the following are required:
 - iter
 - containers
 - fmt
+- ppx_deriving
 
 If using opam, 
 they can be installed with `opam install --deps ./affe.opam`.
