@@ -5,8 +5,9 @@ open Parser
 rule token = parse
   | [' ' '\t']     { token lexbuf }     (* skip blanks *)
   | '#' [^'\n']* '\n' 
-  | '\n' { Lexing.new_line lexbuf ; token lexbuf } 
+  | '\n' { Lexing.new_line lexbuf ; token lexbuf }
   | '-'?[ '0'-'9' ]+ as x	{INT (int_of_string x)}
+  | '"' ([^ '"']* as s) '"' { STRING s}
   | "Y" { YTOK }
   | "let" { LET }
   | "in" { IN }
@@ -44,6 +45,7 @@ rule token = parse
   | "match&!" { MATCH (Some Mutable) }
   | "=>" { BIGRIGHTARROW }
   | "of" { OF }
+  | "import" { IMPORT }
   | "for all" | "\\" { FORALL }
   | ":" { DOUBLECOLON }
   | "," { COMMA }

@@ -124,6 +124,7 @@ type command =
   | ValueDecl of decl
   | TypeDecl of T.decl
   | ValueDef of def
+  | Import of string
 
 module Rename = struct
   [@@@warning "-9"]
@@ -291,5 +292,6 @@ module Rename = struct
       let typ = type_scheme tyenv typ in
       let name = Name.create ?name () in
       ValueDef { name ; typ }
+    | Import s -> Import s
 
 end

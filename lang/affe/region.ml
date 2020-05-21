@@ -228,5 +228,7 @@ let annotate_command (c : command) = match c with
     let expr = region vars expr in 
     ValueDecl { rec_flag; name; expr }
   | TypeDecl _
-  | ValueDef _ -> c
+  | ValueDef _
+  | Import _ 
+    -> c
    

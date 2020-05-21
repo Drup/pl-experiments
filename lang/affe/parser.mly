@@ -22,6 +22,7 @@ let mk_set a i x : expr = App (mk_var "array_set", [Tuple [a;i;x]])
 %token <string> TYIDENT
 %token <string> UIDENT
 %token <int> INT
+%token <string> STRING
 %token UN AFF LIN
 %token UNDERSCORE
 %token DOT
@@ -34,7 +35,7 @@ let mk_set a i x : expr = App (mk_var "array_set", [Tuple [a;i;x]])
 %token <Syntax.match_spec> MATCH
 %token SEMI
 %token BAR
-%token TYPE VAL WITH
+%token TYPE VAL WITH IMPORT
 %token RIGHTARROW LEFTARROW FUN BIGRIGHTARROW
 %token COMMA DOUBLECOLON OF
 %token LESS GREATER
@@ -75,6 +76,7 @@ command:
   | VAL name=name DOUBLECOLON typ=type_scheme
     { ValueDef { name ; typ } }
   | typdecl=type_decl { typdecl }
+  | IMPORT s = STRING { Import s }
 
 
 expr:

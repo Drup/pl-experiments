@@ -38,6 +38,8 @@ val print_info : ('a, Format.formatter, unit, unit) format4 -> 'a
 val print_parens : ?max_level:int -> ?at_level:int ->
                    Format.formatter -> ('a, Format.formatter, unit, unit) format4 -> 'a
 
+type filename = string
+
 (** The definition of a programming language *)
 module type LANGUAGE =
   sig
@@ -67,13 +69,13 @@ module type LANGUAGE =
 
     (** Execute a toplevel command in the given environment and
         return the new environment. *)
-    val exec : environment -> command -> environment
+    val exec :
+      (environment -> filename -> environment) ->
+      environment -> command -> environment
   end
 
 (** Create a language from its definition. *)
 module Main (L : LANGUAGE) : sig
-  val load_files : string list -> unit
-  
   (** The main program *)
   val main : unit -> unit
 end

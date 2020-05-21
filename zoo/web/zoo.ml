@@ -74,6 +74,8 @@ let print_error (loc, err_type, msg) = print_message ~loc err_type "%s" msg
 let print_info msg =
   Format.fprintf Zoo_web.term msg
 
+type filename = string
+
 module type LANGUAGE =
 sig
   val name : string
@@ -84,16 +86,13 @@ sig
   val read_more : string -> bool
   val file_parser : (Lexing.lexbuf -> command list) option
   val toplevel_parser : (Lexing.lexbuf -> command) option
-  val exec : environment -> command -> environment
+  val exec :
+    (environment -> filename -> environment) ->
+    environment -> command -> environment
 end
 
 module Main (L : LANGUAGE) =
 struct
-
-  (* (\** Add a file to the list of files to be loaded, and record whether it should
-   *     be processed in interactive mode. *\)
-   * let add_file (filename, content) =
-   *   (files := (filename, content) :: !files) *)
 
   (** Parse the contents from a file, using a given [parser]. *)
   let read_file parser (fn, str) =
@@ -117,7 +116,9 @@ struct
     match L.file_parser with
     | Some f ->
       let cmds = read_file (wrap_syntax_errors f) (filename, content) in
-      List.fold_left L.exec ctx cmds
+      List.fold_left
+        (L.exec (fun _ _ -> fatal_error "Cannot load files in the web toplevel"))
+        ctx cmds
     | None ->
       fatal_error "Cannot load files, only interactive shell is available"
 

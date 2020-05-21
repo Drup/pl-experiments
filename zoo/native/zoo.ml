@@ -75,6 +75,8 @@ let print_error (loc, err_type, msg) = print_message ~loc err_type "%s" msg
 let print_info msg =
   Format.printf msg
 
+type filename = string
+
 module type LANGUAGE =
 sig
   val name : string
@@ -85,7 +87,9 @@ sig
   val read_more : string -> bool
   val file_parser : (Lexing.lexbuf -> command list) option
   val toplevel_parser : (Lexing.lexbuf -> command) option
-  val exec : environment -> command -> environment
+  val exec :
+    (environment -> filename -> environment) ->
+    environment -> command -> environment
 end
 
 module Main (L : LANGUAGE) =
@@ -117,7 +121,7 @@ struct
 
   (** Add a file to the list of files to be loaded, and record whether it should
       be processed in interactive mode. *)
-  let add_file interactive filename = (files := (filename, interactive) :: !files)
+  let add_file filename = (files := filename :: !files)
 
   (** Command-line options *)
   let options = Arg.align ([
@@ -130,14 +134,14 @@ struct
      Arg.Clear interactive_shell,
      " Do not run the interactive toplevel");
     ("-l",
-     Arg.String (fun str -> add_file false str),
+     Arg.String (fun str -> add_file str),
      "<file> Load <file> into the initial environment")
   ] @
   L.options)
 
   (** Treat anonymous arguments as files to be run. *)
   let anonymous str =
-    add_file true str;
+    add_file str;
     interactive_shell := false
 
   (** Parse the contents from a file, using a given [parser]. *)
@@ -188,11 +192,11 @@ struct
         syntax_error ~loc:(location_of_lex lex) "syntax error"
 
   (** Load directives from the given file. *)
-  let use_file ctx (filename, _interactive) =
+  let rec use_file ctx filename =
     match L.file_parser with
     | Some f ->
        let cmds = read_file (wrap_syntax_errors f) filename in
-        List.fold_left L.exec ctx cmds
+       List.fold_left (L.exec use_file) ctx cmds
     | None ->
        fatal_error "Cannot load files, only interactive shell is available"
 
@@ -215,14 +219,12 @@ struct
           while true do
             try
               let cmd = read_toplevel (wrap_syntax_errors toplevel_parser) () in
-              ctx := L.exec !ctx cmd
+              ctx := L.exec use_file !ctx cmd
             with
               | Error err -> print_error err
               | Sys.Break -> prerr_endline "Interrupted."
           done
       with End_of_file -> ()
-
-  let load_files _ = ()
 
   (** Main program *)
   let main () =

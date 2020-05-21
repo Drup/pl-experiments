@@ -55,7 +55,7 @@ include Zoo.Main (struct
       | Env.Var_not_found name -> 
         Zoo.error "Unknwon variable %a" Printer.name name
     
-    let exec env c =
+    let exec import env c =
       let c = Syntax.Rename.command env.name c in
       let c = Region.annotate_command c in
       match c with
@@ -105,4 +105,6 @@ include Zoo.Main (struct
           add_def name decl (Syntax.Constructor name) env
         in
         List.fold_left f env constrs
+      | Import s ->
+        import env s
   end)
