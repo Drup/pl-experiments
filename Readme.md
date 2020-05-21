@@ -8,6 +8,8 @@ This typechecker implements the feature from the article (full inference, kinds,
 As noted in Section 3 of the article, regions variable are implemented using
 integers instead of full blown region variables.
 
+Unfortunately, no effort has been invested in making type and kind errors understandable. Parsing errors should at least return a location.
+
 ## Online version 
 
 An online version of the typechecker with a selected set of examples is available here:
@@ -41,7 +43,9 @@ To build manually, up-to-date versions of the following are required:
 - fmt
 
 If using opam, 
-they can be installed with `opam install --deps ./affe.opam.locked`
+they can be installed with `opam install --deps ./affe.opam`.
+A lockfile (with strict version requirement) 
+can be also used with `opam install --deps ./affe.opam.locked`.
 
 ## Running the typechecker
 
@@ -121,7 +125,7 @@ define `some_name` and add it to the environment.
 
 The kind `un`, `lin` and `aff` are available.
 
-The types `unit` and `'a array` are pre-defined
+The types `unit`, `bool`, `int` and `'a array` are pre-defined
 
 The type schemes and expressions form a subset of OCaml, with
 the following differences:
@@ -140,3 +144,8 @@ differences:
 - Regions are indicated with `{ <expr> }`
 - Borrows are noted `&(<expr>)` and `&!(<expr>)`
 - Delimiters in pattern matching are mandatory: `match <expr> with { <cases> }`. See `patmatch.affe` for example. Deep pattern matching is not supported.
+
+Typical shortcuts are also available such as
+`let f x = <expr>`, 
+`let f (Constr x) = <expr>`, 
+`let (Constr x) = <expr> in <expr>`, etc
