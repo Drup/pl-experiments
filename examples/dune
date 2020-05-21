@@ -25,9 +25,9 @@ let fail = [
 let stanza_success s =
   Format.asprintf {|
 (rule
- (deps ../affe.exe (glob_files *.affe))
+ (deps (glob_files *.affe))
  (action
-   (with-outputs-to %s.output (run ./../affe.exe %s))))
+   (with-outputs-to %s.output (run affe %s))))
 
 (rule
  (alias runtest)
@@ -38,11 +38,11 @@ let stanza_success s =
 let stanza_fail s =
   Format.asprintf {|
 (rule
- (deps ../affe.exe (glob_files *.affe))
+ (deps (glob_files *.affe))
  (action
    (with-accepted-exit-codes (not 0)
     (with-outputs-to %s.output
-     (run ./../affe.exe %s)))))
+     (run affe %s)))))
 
 (rule
  (alias runtest)

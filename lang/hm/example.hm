@@ -1,8 +1,0 @@
-let x =
-  let id = fun x -> x in
-  let id2 = id id in
-  let x = id2 3 in
-  id2
-let x = 2
-let plusx = fun y -> + x y
-let a = plusx 2

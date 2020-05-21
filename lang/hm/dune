@@ -1,7 +1,0 @@
-(ocamllex lexer)
-(menhir (modules parser))
-
-(executable
-  (name hm)
-  (libraries zoo_native)
-)
