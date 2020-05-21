@@ -4,6 +4,12 @@ DOCDIR=.gh-pages
 all:
 	dune build lang/affe/affe.exe
 
+test:
+	dune runtest
+
+clean:
+	dune clean
+
 web:
 	dune build lang/affe/affe_www.bc.js
 	@cp _build/default/lang/affe/affe_www.bc.js www
