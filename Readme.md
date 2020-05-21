@@ -40,7 +40,8 @@ To build manually, up-to-date versions of the following are required:
 - containers
 - fmt
 
-If using opam, they can be installed with `opam install --deps <path/to/sources>`
+If using opam, 
+they can be installed with `opam install --deps ./affe.opam.locked`
 
 ## Running the typechecker
 

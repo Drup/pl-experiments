@@ -1,0 +1,38 @@
+opam-version: "2.0"
+name: "affe"
+version: "~dev"
+maintainer: "Gabriel Radanne <drupyog@zoho.com>"
+authors: "Gabriel Radanne <drupyog@zoho.com>"
+license: "ISC"
+depends: [
+  "base-bigarray" {= "base"}
+  "base-bytes" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "cmdliner" {= "1.0.4"}
+  "conf-m4" {= "1"}
+  "containers" {= "2.8.1"}
+  "dune" {= "2.5.1"}
+  "dune-configurator" {= "2.5.1"}
+  "dune-private-libs" {= "2.5.1"}
+  "fmt" {= "0.8.8"}
+  "iter" {= "1.2.1"}
+  "menhir" {= "20200211"}
+  "menhirLib" {= "20200211"}
+  "menhirSdk" {= "20200211"}
+  "ocaml" {= "4.09.0"}
+  "ocaml-base-compiler" {= "4.09.0"}
+  "ocaml-config" {= "1"}
+  "ocamlbuild" {= "0.14.0"}
+  "ocamlfind" {= "1.8.1"}
+  "ocamlgraph" {= "1.8.8"}
+  "result" {= "1.5"}
+  "seq" {= "base"}
+  "stdlib-shims" {= "0.1.0"}
+  "topkg" {= "1.0.1"}
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
