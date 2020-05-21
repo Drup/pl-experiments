@@ -29,6 +29,19 @@ the implementation of the webpage) is available here:
 
   https://github.com/Drup/pl-experiments
 
+## Manual build
+
+To build manually, up-to-date versions of the following are required:
+- OCaml
+- menhir
+- dune
+- ocamlgraph
+- iter
+- containers
+- fmt
+
+If using opam, they can be installed with `opam install --deps <path/to/sources>`
+
 ## Running the typechecker
 
 Running the typechecker will return the inferred type-signature for each declaration

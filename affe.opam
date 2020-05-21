@@ -1,0 +1,21 @@
+opam-version: "2.0"
+name: "affe"
+maintainer: "Gabriel Radanne <drupyog@zoho.com>"
+authors: "Gabriel Radanne <drupyog@zoho.com>"
+license: "ISC"
+
+build: [
+  ["dune" "subst"]{pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+depends: [
+  "ocaml" { >= "4.08.0" }
+  "dune" {build & >= "2.2"}
+  "menhir" {>= "2.0"}
+  "containers"
+  "iter"
+  "fmt"
+  "ocamlgraph"
+]
