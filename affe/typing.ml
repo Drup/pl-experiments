@@ -406,23 +406,8 @@ let rec infer (env : Env.t) level = function
       ]
     in
     mults, env, constr, body_ty
-  | Sequence (expr1, expr2) ->
-    let mults1, env, expr1_constr, expr1_ty =
-      infer env level expr1
-    in
-    let mults2, env, expr2_constr, expr2_ty =
-      infer env level expr2 in
-    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
-    let constr = Constraint.normalize ~level ~env [
-        C.(expr1_ty <== Builtin.unit_ty) ;
-        C.denormalize expr1_constr ;
-        C.denormalize expr2_constr ;
-        constr_merge ;
-      ]
-    in
-    mults, env, constr, expr2_ty
   | Let (Rec, PVar n, expr, body) ->
-    with_type ~env ~level:(level + 1) @@ fun constr_ty ty k ->
+    with_type ~env ~level @@ fun constr_ty ty k ->
     with_binding ~env n (T.tyscheme ty) @@ fun env ->
     let mults1, env, expr_constr, expr_ty =
       infer env (level + 1) expr
@@ -453,6 +438,21 @@ let rec infer (env : Env.t) level = function
     fail "Such patterns are not allowed on the left hand side of a let rec@ %a"
       Printer.pattern p
 
+  | Sequence (expr1, expr2) ->
+    let mults1, env, expr1_constr, expr1_ty =
+      infer env level expr1
+    in
+    let mults2, env, expr2_constr, expr2_ty =
+      infer env level expr2 in
+    let mults, constr_merge = Multiplicity.merge mults1 mults2 in
+    let constr = Constraint.normalize ~level ~env [
+        C.(expr1_ty <== Builtin.unit_ty) ;
+        C.denormalize expr1_constr ;
+        C.denormalize expr2_constr ;
+        constr_merge ;
+      ]
+    in
+    mults, env, constr, expr2_ty
   | Match (match_spec, expr, cases) ->
     let mults, env, expr_constrs, match_ty = infer env level expr in
     with_type ~env ~level @@ fun constr_ty return_ty _ ->
