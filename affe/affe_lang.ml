@@ -51,9 +51,9 @@ include Zoo.Main (struct
           "Variable %a used as %a and %a. This uses are incompatible."
           Printer.name name (Printer.use env) u1 (Printer.use env) u2
       | Env.Type_not_found name -> 
-        Zoo.error "Unknwon type %a" Printer.name name
+        Zoo.error "Unknown type %a" Printer.name name
       | Env.Var_not_found name -> 
-        Zoo.error "Unknwon variable %a" Printer.name name
+        Zoo.error "Unknown variable %a" Printer.name name
     
     let exec import env c =
       let c = Syntax.Rename.command env.name c in

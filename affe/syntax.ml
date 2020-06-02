@@ -131,14 +131,14 @@ module Rename = struct
   
   module SMap = Map.Make(String)
 
-  let find x env =
+  let find msg x env =
     match x with
     | None -> Name.create ()
     | Some x -> 
       if SMap.mem x env then
         SMap.find x env
       else
-        Zoo.error "Unbound variable %s" x
+        Zoo.error "Unbound %s %s" msg x
 
   let add n k env = match n with
     | None -> assert false
@@ -146,7 +146,7 @@ module Rename = struct
 
   let maps env ns =
     Name.Map.fold
-      (fun {name} k m -> Name.Map.add (find name env) k m)
+      (fun {name} k m -> Name.Map.add (find "name" name env) k m)
       ns Name.Map.empty
   
   let rec pattern env = function
@@ -157,10 +157,10 @@ module Rename = struct
       let env = add name new_name env in
       env, PVar new_name
     | PConstr (constr, None) ->
-      let constr = find constr.name env in
+      let constr = find "constructor" constr.name env in
       env, PConstr (constr, None)
     | PConstr (constr, Some p) ->
-      let constr = find constr.name env in
+      let constr = find "constructor" constr.name env in
       let env, p = pattern env p in
       env, PConstr (constr, Some p)
     | PTuple l ->
@@ -171,14 +171,14 @@ module Rename = struct
     | Lambda (pat, e) ->
       let pat, e = lambda env (pat, e) in
       Lambda (pat, e)
-    | Constructor ({name}) -> Constructor (find name env)
+    | Constructor ({name}) -> Constructor (find "constructor" name env)
     | Constant _ as e -> e
     | Array l  -> Array (List.map (expr env) l)
     | Tuple l  -> Tuple (List.map (expr env) l)
     | Region (ns, e) -> Region (maps env ns, expr env e)
-    | Var { name } -> Var (find name env)
-    | Borrow (r, {name}) -> Borrow (r, find name env)
-    | ReBorrow (r, {name}) -> ReBorrow (r, find name env)
+    | Var { name } -> Var (find "variable" name env)
+    | Borrow (r, {name}) -> Borrow (r, find "variable" name env)
+    | ReBorrow (r, {name}) -> ReBorrow (r, find "variable" name env)
     | App (f, l) -> App (expr env f, List.map (expr env) l)
     | Let (b, pat, e1, e2) ->
       let env', pat = pattern env pat in
@@ -198,7 +198,7 @@ module Rename = struct
     (pat, e)
 
   let rec kind_expr ~kvarenv = function
-    | K.KVar {name} -> KVar (find name kvarenv)
+    | K.KVar {name} -> KVar (find "kind variable" name kvarenv)
     | Un | Aff | Lin | Unknown as k -> k
   and constrs ~kvarenv ~tyenv ~tyvarenv = function
     | C.KindLEq (k1, k2) ->
@@ -212,18 +212,19 @@ module Rename = struct
                 kind_expr ~kvarenv k,
                 type_expr ~kvarenv ~tyenv ~tyvarenv ty2)
     | App ({name}, args) ->
-      App (find name tyenv, List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
+      App (find "type constructor" name tyenv,
+           List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
     | Tuple (args) ->
       Tuple (List.map (type_expr ~kvarenv ~tyenv ~tyvarenv) args)
     | Var {name} ->
-      Var (find name tyvarenv)
+      Var (find "type variable" name tyvarenv)
     | Borrow (r, k, ty) ->
       Borrow (r, kind_expr ~kvarenv k, type_expr ~kvarenv ~tyenv ~tyvarenv ty)
 
   let add_kind_var kvarenv {Name. name} =
     match name with
     | Some n when SMap.mem n kvarenv ->
-      kvarenv, find name kvarenv
+      kvarenv, find "kind variable" name kvarenv
     | _ ->
       let n = Name.create ?name () in
       add name n kvarenv, n
@@ -276,7 +277,9 @@ module Rename = struct
     | TypeDecl {
         name = {name}; params; kind; constraints; constructor; 
       }  ->
+      let orig_name = name in
       let name = Name.create ?name () in
+      let tyenv = add orig_name name tyenv in
 
       let kvarenv = SMap.empty and tyvarenv = SMap.empty in
       let (kvarenv, tyvarenv), params =
