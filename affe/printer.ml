@@ -228,7 +228,7 @@ and typ
   | T.Tuple l ->
     let pp_sep fmt () = Format.fprintf fmt " *@ " in
     Format.fprintf fmt "@[<2>%a@]"
-      (Format.pp_print_list ~pp_sep @@ typ env) l
+      (Format.pp_print_list ~pp_sep @@ typ_with_paren env) l
   | T.App (f,[]) ->
     name fmt f
   | T.App (f,[e]) ->

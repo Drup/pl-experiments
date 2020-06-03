@@ -7,7 +7,7 @@ qpush : ∀^k, ^k2, 'a. ('a : ^k) => 'a -> &(^k2,'a queue) -{^k}> unit
 qpop : ∀^k, ^k2, 'a. ('a : ^k) => &(^k2,'a queue) -> 'a option
 qiter : ∀^k, 'a. ('a : ^k) => ('a -> unit) -> 'a queue -> unit
 type pool = ^_k -> ^_k
-constructor Pool : ∀'a. unit -> 'a * 'a queue -> 'a pool
+constructor Pool : ∀'a. (unit -> 'a) * 'a queue -> 'a pool
 create : ∀^k, 'a. ('a : ^k) => (unit -> 'a) -> 'a pool
 
 consume : ∀^k, 'a. ('a : ^k) => ('a -> unit) -> 'a pool -> unit
