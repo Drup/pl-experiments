@@ -57,13 +57,15 @@ You can run the typechecker interactively with
 ```
 dune exec affe
 ```
+In the interactive mod, input must be terminated by `;;`
+
 
 you can run the typechecker on any file of your choosing with
 ```
 dune exec affe -- <file>
 ```
 
-See `dune exec affe -- --help` for help
+An option is also available to disable utf8 printing. See `dune exec affe -- --help` for help.
 
 ## Included examples 
 
@@ -71,7 +73,7 @@ The following examples should be used as an introduction
 to the language:
 
 - `channel.affe` A simple implementation of untyped channels
-- `session.affe` Example A.1 from the article
+- `sessions.affe` Example A.1 from the article
 - `sudoku.affe` Example 2.2 from the article
 - `pool.affe` Example A.2 from the article
 
@@ -95,6 +97,9 @@ discovering the language using the "main" examples described before.
 We now describe some of the syntax of the language that might differ from the
 article.
 
+As customary in many MLs, inputs must be terminated by `;;` **in the interactive
+mod only**.
+
 ### Toplevel commands
 
 ```
@@ -110,7 +115,7 @@ declares a symbol `some_name` with the given type. The type is checked for well-
 ```
 type ('a : k1, 'b: k2) t : <kind>
 ```
-allows to declare an abstract type `t` with the given parameters and kind. See `session.affe` for examples.
+allows to declare an abstract type `t` with the given parameters and kind. See `sessions.affe` for examples.
 
 ```
 type ('a : 'k) option : 'k = None of unit | Some of 'a

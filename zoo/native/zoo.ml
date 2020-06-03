@@ -1,5 +1,7 @@
 (* This file contains all the common code used by the languages implemented in the PL Zoo. *)
 
+let utf8 = ref true
+
 type location =
   | Location of Lexing.position * Lexing.position (** delimited location *)
   | Nowhere (** no location *)
@@ -25,18 +27,6 @@ let error ?(kind="Error") ?(loc=Nowhere) =
       raise (Error (loc, kind, msg))
   in
   Format.kfprintf k Format.str_formatter
-
-let print_parens ?(max_level=9999) ?(at_level=0) ppf =
-  if max_level < at_level then
-    begin
-      Format.fprintf ppf "(@[" ;
-      Format.kfprintf (fun ppf -> Format.fprintf ppf "@])") ppf
-    end
-  else
-    begin
-      Format.fprintf ppf "@[" ;
-      Format.kfprintf (fun ppf -> Format.fprintf ppf "@]") ppf
-    end
 
 let print_location loc ppf =
   match loc with
@@ -135,7 +125,10 @@ struct
      " Do not run the interactive toplevel");
     ("-l",
      Arg.String (fun str -> add_file str),
-     "<file> Load <file> into the initial environment")
+     "<file> Load <file> into the initial environment");
+    ("-utf8",
+     Arg.Bool (fun b -> utf8 := b),
+     " Enable or disable utf8 usage");
   ] @
   L.options)
 

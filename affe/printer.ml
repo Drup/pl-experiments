@@ -15,14 +15,16 @@ let constant fmt = function
   | Y -> bold fmt "Y" 
 
 let indice_array = [|"₀";"₁";"₂";"₃";"₄";"₅";"₆";"₇";"₈";"₉"|]
+let pp_digit fmt i =
+  if !Zoo.utf8 then Fmt.string fmt indice_array.(i) else Fmt.pf fmt "_%i" i
 let rec digits fmt i =
   if i < 0 then
     Format.pp_print_string fmt "₋"
   else if i < 10 then
-    Format.pp_print_string fmt indice_array.(i)
+    pp_digit fmt i
   else begin
     digits fmt (i/10) ;
-    Format.pp_print_string fmt indice_array.(i mod 10)
+    pp_digit fmt (i mod 10)
   end
 
 let name_with_digits fmt {Name. name ; id } =
@@ -196,7 +198,7 @@ let kname ?(unbound=false) env fmt n =
 
 let region fmt = function
   | Kinds.Region.Region i -> digits fmt i
-  | Never -> Fmt.string fmt "ₙ"
+  | Never -> Fmt.string fmt (if !Zoo.utf8 then "ₙ" else "_n")
   | Global -> ()
 
 let rec kvar
